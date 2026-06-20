@@ -3,9 +3,9 @@ import {
   searchArtists,
   getGenreAlbums,
   getGenreArtists,
-  getFeaturedAlbums,
-  getFeaturedArtists,
 } from "@/lib/musicbrainz";
+
+export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Carousel } from "@/components/Carousel";
@@ -14,6 +14,15 @@ import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { FavoriteGenreButton } from "@/components/FavoriteGenreButton";
 import Link from "next/link";
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 const GENRES = [
   { label: "Rock", tag: "rock" },
@@ -100,21 +109,26 @@ export default async function DiscoverPage({
 
   // ── Artists mode ───────────────────────────────────────────────────────────
   if (isArtistMode) {
-    const [featured, ...genreResults] = await Promise.all([
-      getFeaturedArtists(16),
-      ...sortedGenres.map(({ tag }) => getGenreArtists(tag, 16)),
-    ]);
+    const artistGenreResults = await Promise.all(
+      sortedGenres.map(({ tag }) => getGenreArtists(tag, 50))
+    );
+
+    const seenArtistIds = new Set<string>();
+    const recommendedArtistPool = sortedGenres
+      .flatMap((_, i) => shuffle(artistGenreResults[i] ?? []).slice(0, 5))
+      .filter((a) => { if (seenArtistIds.has(a.id)) return false; seenArtistIds.add(a.id); return true; });
+    const recommendedArtists = shuffle(recommendedArtistPool).slice(0, 16);
 
     return (
       <div className="max-w-5xl mx-auto">
         <ModeToggle mode="artists" />
         <SearchBar defaultValue="" mode="artists" />
-        <ArtistCarousel title="Recommended Artists" artists={featured} />
+        <ArtistCarousel title="Recommended Artists" artists={recommendedArtists} />
         {sortedGenres.map(({ label, tag }, i) => (
           <ArtistCarousel
             key={label}
             title={label}
-            artists={genreResults[i] ?? []}
+            artists={shuffle(artistGenreResults[i] ?? []).slice(0, 16)}
             href={`/genre/${encodeURIComponent(tag)}`}
           />
         ))}
@@ -123,10 +137,16 @@ export default async function DiscoverPage({
   }
 
   // ── Albums mode (default) ──────────────────────────────────────────────────
-  const [featured, ...genreResults] = await Promise.all([
-    getFeaturedAlbums(16),
-    ...sortedGenres.map(({ tag }) => getGenreAlbums(tag, 16)),
-  ]);
+  const genreResults = await Promise.all(
+    sortedGenres.map(({ tag }) => getGenreAlbums(tag, 50))
+  );
+
+  // Build Recommended by sampling across all genre pools — diverse + cycles well
+  const seenIds = new Set<string>();
+  const recommendedPool = sortedGenres
+    .flatMap((_, i) => shuffle(genreResults[i] ?? []).slice(0, 5))
+    .filter((a) => { if (seenIds.has(a.id)) return false; seenIds.add(a.id); return true; });
+  const recommended = shuffle(recommendedPool).slice(0, 16);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -135,7 +155,7 @@ export default async function DiscoverPage({
 
       <Carousel
         title="Recommended"
-        albums={featured}
+        albums={recommended}
         isLoggedIn={isLoggedIn}
         href="/recommended"
       />
@@ -144,7 +164,7 @@ export default async function DiscoverPage({
         <Carousel
           key={label}
           title={label}
-          albums={genreResults[i] ?? []}
+          albums={shuffle(genreResults[i] ?? []).slice(0, 16)}
           isLoggedIn={isLoggedIn}
           href={`/genre/${encodeURIComponent(tag)}`}
           favoriteButton={
