@@ -151,12 +151,16 @@ export interface MBTrack {
 // ── Queries ─────────────────────────────────────────────────────────────────────
 
 export async function searchAlbums(query: string, limit = 20): Promise<MBAlbum[]> {
-  const data = await mbFetch("/release", { query: `release:${query}`, limit: String(limit) });
+  const data = await mbFetch(
+    "/release",
+    { query: `(release:${query} OR artist:${query}) AND primarytype:Album`, limit: String(limit) },
+    "high"
+  );
   return (data as { releases?: MBAlbum[] }).releases ?? [];
 }
 
 export async function searchArtists(query: string, limit = 20): Promise<MBArtist[]> {
-  const data = await mbFetch("/artist", { query, limit: String(limit) });
+  const data = await mbFetch("/artist", { query, limit: String(limit) }, "high");
   return (data as { artists?: MBArtist[] }).artists ?? [];
 }
 
