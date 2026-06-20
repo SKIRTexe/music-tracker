@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth";
 import { ExpandableAlbums } from "@/components/ExpandableAlbums";
 import { ExpandableArtists } from "@/components/ExpandableArtists";
 import { GenreSlideshow } from "@/components/GenreSlideshow";
-import { getWikipediaSummary } from "@/lib/wikipedia";
+import { getWikipediaArticle } from "@/lib/wikipedia";
+import { ExpandableText } from "@/components/ExpandableText";
 import Link from "next/link";
 
 function formatTag(tag: string): string {
@@ -22,12 +23,17 @@ export default async function GenrePage({
   const decoded = decodeURIComponent(tag);
   const formatted = formatTag(decoded);
 
-  const [albums, artists, session, wikiSummary] = await Promise.all([
+  const [albums, artists, session, wikiArticle] = await Promise.all([
     getGenreAlbums(decoded, 40, "high"),
     getGenreArtists(decoded, 40, "high"),
     auth(),
-    getWikipediaSummary(`${formatted} music`),
+    getWikipediaArticle(`${formatted} music`),
   ]);
+
+  // First paragraph of intro for the slideshow banner overlay
+  const slideshowSummary = wikiArticle.intro
+    ?.split("\n")
+    .find((p) => p.trim().length > 0) ?? undefined;
 
   const slideshowAlbums = albums.slice(0, 6).map((a) => ({
     title: a.title,
@@ -44,7 +50,27 @@ export default async function GenrePage({
       </Link>
 
       {/* Full-width header banner with genre title + summary overlaid */}
-      <GenreSlideshow albums={slideshowAlbums} genre={formatted} summary={wikiSummary ?? undefined} />
+      <GenreSlideshow albums={slideshowAlbums} genre={formatted} summary={slideshowSummary} />
+
+      {/* About */}
+      {wikiArticle.intro && (
+        <section className="mb-8">
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+            About
+          </h2>
+          <ExpandableText text={wikiArticle.intro} initialParagraphs={3} />
+        </section>
+      )}
+
+      {/* History */}
+      {wikiArticle.history && (
+        <section className="mb-8">
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+            History
+          </h2>
+          <ExpandableText text={wikiArticle.history} initialParagraphs={3} />
+        </section>
+      )}
 
       {/* Recommended albums carousel → popup */}
       <ExpandableAlbums

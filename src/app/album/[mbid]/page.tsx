@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AlbumActions } from "@/components/AlbumActions";
 import { ImageSlideshow } from "@/components/ImageSlideshow";
-import { getWikipediaSummary } from "@/lib/wikipedia";
+import { getWikipediaArticle } from "@/lib/wikipedia";
+import { ExpandableText } from "@/components/ExpandableText";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -65,11 +66,11 @@ export default async function AlbumPage({
   const tracks = album.media?.flatMap((m) => m.tracks ?? []) ?? [];
   const genres: MBGenre[] = album.genres ?? [];
 
-  const [artworkUrl, caaImages, session, wikiSummary] = await Promise.all([
+  const [artworkUrl, caaImages, session, wikiArticle] = await Promise.all([
     getItunesArtwork(album.title, artist),
     getAlbumImages(mbid),
     auth(),
-    getWikipediaSummary(`${album.title} ${artist} album`),
+    getWikipediaArticle(`${album.title} ${artist} album`),
   ]);
 
   const slideshowImages =
@@ -153,12 +154,22 @@ export default async function AlbumPage({
       </div>
 
       {/* About */}
-      {wikiSummary && (
+      {wikiArticle.intro && (
         <section className="mb-8">
           <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
             About
           </h2>
-          <p className="text-sm text-zinc-400 leading-relaxed">{wikiSummary}</p>
+          <ExpandableText text={wikiArticle.intro} initialParagraphs={3} />
+        </section>
+      )}
+
+      {/* History */}
+      {wikiArticle.history && (
+        <section className="mb-8">
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+            History
+          </h2>
+          <ExpandableText text={wikiArticle.history} initialParagraphs={3} />
         </section>
       )}
 
