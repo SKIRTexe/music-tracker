@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useState, useRef, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addAlbumToLibrary, rateAlbumAction } from "@/app/actions";
@@ -147,6 +147,17 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didLongPress = useRef(false);
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
+
+  // Keep menu anchored to the card while scrolling
+  useEffect(() => {
+    if (!menuRect) return;
+    const update = () => {
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (rect) setMenuRect(rect);
+    };
+    window.addEventListener("scroll", update, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", update, { capture: true });
+  }, [menuRect]);
 
   const startPress = (e: React.PointerEvent) => {
     if (menuRect) return;
