@@ -4,6 +4,8 @@ import {
   getGenreAlbums,
   getGenreArtists,
 } from "@/lib/musicbrainz";
+import { resolveAlbumArtwork } from "@/lib/artwork";
+import type { MBAlbum } from "@/lib/musicbrainz";
 
 export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth";
@@ -141,12 +143,27 @@ export default async function DiscoverPage({
     sortedGenres.map(({ tag }) => getGenreAlbums(tag, 50))
   );
 
+  // Shuffle once — same result used for pre-resolution and render
+  const shuffledGenre = genreResults.map((pool) => shuffle(pool).slice(0, 16));
+
   // Build Recommended by sampling across all genre pools — diverse + cycles well
   const seenIds = new Set<string>();
   const recommendedPool = sortedGenres
     .flatMap((_, i) => shuffle(genreResults[i] ?? []).slice(0, 5))
     .filter((a) => { if (seenIds.has(a.id)) return false; seenIds.add(a.id); return true; });
   const recommended = shuffle(recommendedPool).slice(0, 16);
+
+  // Pre-resolve iTunes artwork for every displayed album in parallel.
+  // Results are cached in src/lib/artwork.ts — after first load, all instant.
+  const displayed = [...recommended, ...shuffledGenre.flat()];
+  const unique = [...new Map(displayed.map((a) => [a.id, a])).values()];
+  await Promise.all(
+    unique.map(async (album) => {
+      const artist = (album as MBAlbum)["artist-credit"]?.[0]?.artist?.name ?? "";
+      const url = await resolveAlbumArtwork(album.title, artist);
+      if (url) album.coverUrl = url;
+    })
+  );
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -164,7 +181,7 @@ export default async function DiscoverPage({
         <Carousel
           key={label}
           title={label}
-          albums={shuffle(genreResults[i] ?? []).slice(0, 16)}
+          albums={shuffledGenre[i] ?? []}
           isLoggedIn={isLoggedIn}
           href={`/genre/${encodeURIComponent(tag)}`}
           favoriteButton={

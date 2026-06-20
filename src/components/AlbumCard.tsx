@@ -135,8 +135,8 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
   const year = album.date ? album.date.slice(0, 4) : null;
   const router = useRouter();
 
-  // Cover Art Archive URL — browser fetches directly, no API call needed
-  const caaUrl = `https://coverartarchive.org/release/${album.id}/front-250`;
+  // Use pre-resolved iTunes URL if available (fast CDN), else fall back to CAA
+  const primaryUrl = album.coverUrl ?? `https://coverartarchive.org/release/${album.id}/front-250`;
   const [imgFailed, setImgFailed] = useState(false);
 
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
@@ -187,7 +187,7 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
       await addAlbumToLibrary(
         album.id, album.title, artist, status,
         year ? parseInt(year) : undefined,
-        imgFailed ? undefined : caaUrl,
+        imgFailed ? undefined : primaryUrl,
         artistId ?? undefined
       );
     });
@@ -199,7 +199,7 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
       await rateAlbumAction(
         album.id, album.title, artist, ratingValue,
         year ? parseInt(year) : undefined,
-        imgFailed ? undefined : caaUrl,
+        imgFailed ? undefined : primaryUrl,
         artistId ?? undefined
       );
     });
@@ -223,7 +223,7 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
           {!imgFailed ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={caaUrl}
+              src={primaryUrl}
               alt={album.title}
               draggable={false}
               onError={() => setImgFailed(true)}
@@ -260,7 +260,7 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
           album={album}
           artist={artist}
           year={year}
-          artworkUrl={artworkUrl}
+          artworkUrl={imgFailed ? null : primaryUrl}
           anchorRect={menuRect}
           isLoggedIn={isLoggedIn}
           isPending={isPending}
