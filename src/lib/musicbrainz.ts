@@ -220,19 +220,38 @@ export async function getSimilarArtists(
 ): Promise<MBArtist[]> {
   if (tags.length === 0) return [];
   try {
-    const tagQuery = tags.slice(0, 3).map((t) => `tag:${t}`).join(" OR ");
-    const data = await mbFetch("/artist", {
-      query: `(${tagQuery}) AND (type:Group OR type:Person)`,
-      limit: String(limit * 3),
-    });
-    const seen = new Set<string>();
-    return ((data as { artists?: MBArtist[] }).artists ?? [])
-      .filter((a) => {
-        if (a.id === excludeMbid || seen.has(a.id)) return false;
-        seen.add(a.id);
-        return true;
-      })
-      .slice(0, limit);
+    const topTags = tags.slice(0, 5);
+
+    // Query each tag separately so we can rank by how many tags overlap
+    const perTagResults = await Promise.all(
+      topTags.map((tag) =>
+        mbFetch("/artist", {
+          query: `tag:${tag} AND (type:Group OR type:Person)`,
+          limit: "25",
+        })
+          .then((data) => (data as { artists?: MBArtist[] }).artists ?? [])
+          .catch(() => [] as MBArtist[])
+      )
+    );
+
+    // Score each artist by number of matching tags — more overlap = more similar
+    const scoreMap = new Map<string, { artist: MBArtist; score: number }>();
+    for (const results of perTagResults) {
+      for (const artist of results) {
+        if (artist.id === excludeMbid) continue;
+        const entry = scoreMap.get(artist.id);
+        if (entry) {
+          entry.score += 1;
+        } else {
+          scoreMap.set(artist.id, { artist, score: 1 });
+        }
+      }
+    }
+
+    return [...scoreMap.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((e) => e.artist);
   } catch { return []; }
 }
 
