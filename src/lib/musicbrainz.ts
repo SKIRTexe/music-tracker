@@ -129,6 +129,7 @@ export interface MBArtist {
   "life-span"?: { begin?: string; end?: string; ended?: boolean };
   relations?: MBArtistRelation[];
   genres?: MBGenre[];
+  imageUrl?: string; // pre-resolved iTunes CDN URL
 }
 
 export interface MBArtistRelation {

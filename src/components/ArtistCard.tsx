@@ -4,18 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { MBArtist } from "@/lib/musicbrainz";
 
-async function fetchArtistImage(name: string): Promise<string | null> {
-  try {
-    const params = new URLSearchParams({ artist: name });
-    const res = await fetch(`/api/artwork?${params}`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.url ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function formatYears(artist: MBArtist): string | null {
   const ls = artist["life-span"];
   if (!ls?.begin) return null;
@@ -25,17 +13,21 @@ function formatYears(artist: MBArtist): string | null {
 }
 
 export function ArtistCard({ artist }: { artist: MBArtist }) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // Use pre-resolved URL from server if available, otherwise fall back to async fetch
+  const [imageUrl, setImageUrl] = useState<string | null>(artist.imageUrl ?? null);
   const router = useRouter();
   const years = formatYears(artist);
 
   useEffect(() => {
+    if (imageUrl) return; // already have a URL from server pre-resolution
     let cancelled = false;
-    fetchArtistImage(artist.name).then((url) => {
-      if (!cancelled) setImageUrl(url);
-    });
+    const params = new URLSearchParams({ artist: artist.name });
+    fetch(`/api/artwork?${params}`, { signal: AbortSignal.timeout(8000) })
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d.url) setImageUrl(d.url); })
+      .catch(() => {});
     return () => { cancelled = true; };
-  }, [artist.name]);
+  }, [artist.name, imageUrl]);
 
   return (
     <div

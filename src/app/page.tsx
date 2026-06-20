@@ -4,7 +4,7 @@ import {
   getGenreAlbums,
   getGenreArtists,
 } from "@/lib/musicbrainz";
-import { resolveAlbumArtwork } from "@/lib/artwork";
+import { resolveAlbumArtwork, resolveArtistArtwork } from "@/lib/artwork";
 import type { MBAlbum } from "@/lib/musicbrainz";
 
 export const dynamic = "force-dynamic";
@@ -115,11 +115,23 @@ export default async function DiscoverPage({
       sortedGenres.map(({ tag }) => getGenreArtists(tag, 50))
     );
 
+    const shuffledArtistGenre = artistGenreResults.map((pool) => shuffle(pool).slice(0, 16));
+
     const seenArtistIds = new Set<string>();
     const recommendedArtistPool = sortedGenres
       .flatMap((_, i) => shuffle(artistGenreResults[i] ?? []).slice(0, 5))
       .filter((a) => { if (seenArtistIds.has(a.id)) return false; seenArtistIds.add(a.id); return true; });
     const recommendedArtists = shuffle(recommendedArtistPool).slice(0, 16);
+
+    // Pre-resolve artist artwork server-side
+    const displayedArtists = [...recommendedArtists, ...shuffledArtistGenre.flat()];
+    const uniqueArtists = [...new Map(displayedArtists.map((a) => [a.id, a])).values()];
+    await Promise.all(
+      uniqueArtists.map(async (artist) => {
+        const url = await resolveArtistArtwork(artist.name);
+        if (url) artist.imageUrl = url;
+      })
+    );
 
     return (
       <div className="max-w-5xl mx-auto">
@@ -130,7 +142,7 @@ export default async function DiscoverPage({
           <ArtistCarousel
             key={label}
             title={label}
-            artists={shuffle(artistGenreResults[i] ?? []).slice(0, 16)}
+            artists={shuffledArtistGenre[i] ?? []}
             href={`/genre/${encodeURIComponent(tag)}`}
           />
         ))}
