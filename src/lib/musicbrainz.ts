@@ -56,6 +56,7 @@ async function mbFetchRaw(urlStr: string): Promise<unknown> {
       const res = await fetch(urlStr, {
         headers: { "User-Agent": USER_AGENT },
         next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(8000),
       });
       if (res.status === 503 || res.status === 429) {
         lastErr = new Error(`MusicBrainz rate limited: ${res.status}`);
