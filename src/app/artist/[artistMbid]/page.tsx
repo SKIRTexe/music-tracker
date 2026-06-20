@@ -10,7 +10,8 @@ import { ExpandableAlbums } from "@/components/ExpandableAlbums";
 import { ExpandableArtists } from "@/components/ExpandableArtists";
 import { ArtistSlideshow } from "@/components/ArtistSlideshow";
 import { BandMembers } from "@/components/BandMembers";
-import { getWikipediaSummary } from "@/lib/wikipedia";
+import { getWikipediaArticle } from "@/lib/wikipedia";
+import { ExpandableText } from "@/components/ExpandableText";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -42,11 +43,11 @@ export default async function ArtistPage({
   const genres: MBGenre[] = artist.genres ?? [];
   const genreTags = genres.slice(0, 5).map((g) => g.name);
 
-  const [albums, session, similarArtists, wikiSummary] = await Promise.all([
+  const [albums, session, similarArtists, wikiArticle] = await Promise.all([
     getArtistAlbums(artistMbid, 40),
     auth(),
     getSimilarArtists(genreTags, artistMbid, 12),
-    getWikipediaSummary(artist.name ?? ""),
+    getWikipediaArticle(artist.name ?? ""),
   ]);
 
   const name: string = artist.name ?? "Unknown Artist";
@@ -115,14 +116,6 @@ export default async function ArtistPage({
             </div>
           )}
 
-          {wikiSummary && (
-            <div>
-              <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-2">
-                About
-              </h2>
-              <p className="text-sm text-zinc-400 leading-relaxed">{wikiSummary}</p>
-            </div>
-          )}
         </div>
 
         {members.length > 0 && (
@@ -131,6 +124,26 @@ export default async function ArtistPage({
           </aside>
         )}
       </div>
+
+      {/* About — full Wikipedia intro */}
+      {wikiArticle.intro && (
+        <section className="mb-8">
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+            About
+          </h2>
+          <ExpandableText text={wikiArticle.intro} initialParagraphs={3} />
+        </section>
+      )}
+
+      {/* History — Wikipedia history/career/background section */}
+      {wikiArticle.history && (
+        <section className="mb-8">
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+            History
+          </h2>
+          <ExpandableText text={wikiArticle.history} initialParagraphs={3} />
+        </section>
+      )}
 
       <ExpandableAlbums title="Discography" albums={albums} isLoggedIn={!!session?.user} />
 
