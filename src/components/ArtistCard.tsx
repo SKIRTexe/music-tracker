@@ -4,19 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { MBArtist } from "@/lib/musicbrainz";
 
-function formatYears(artist: MBArtist): string | null {
-  const ls = artist["life-span"];
-  if (!ls?.begin) return null;
-  const start = ls.begin.slice(0, 4);
-  const end = ls.ended && ls.end ? ls.end.slice(0, 4) : "present";
-  return `${start}–${end}`;
-}
-
 export function ArtistCard({ artist }: { artist: MBArtist }) {
   // Use pre-resolved URL from server if available, otherwise fall back to async fetch
   const [imageUrl, setImageUrl] = useState<string | null>(artist.imageUrl ?? null);
   const router = useRouter();
-  const years = formatYears(artist);
+
+  const formed = artist["life-span"]?.begin?.slice(0, 4) ?? null;
+  const genre = artist.genres?.[0]?.name ?? null;
+  const meta = [genre, formed].filter(Boolean).join(" · ");
 
   useEffect(() => {
     if (imageUrl) return; // already have a URL from server pre-resolution
@@ -48,10 +43,7 @@ export function ArtistCard({ artist }: { artist: MBArtist }) {
         )}
       </div>
       <p className="text-xs font-medium text-zinc-200 line-clamp-1 px-1">{artist.name}</p>
-      {years && <p className="text-[10px] text-zinc-600 mt-0.5">{years}</p>}
-      {!years && artist.disambiguation && (
-        <p className="text-[10px] text-zinc-600 truncate px-1">{artist.disambiguation}</p>
-      )}
+      {meta && <p className="text-[10px] text-zinc-600 mt-0.5 truncate px-1 capitalize">{meta}</p>}
     </div>
   );
 }

@@ -253,6 +253,7 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
         ) : (
           <p className="text-xs text-zinc-500 truncate">{artist}</p>
         )}
+        {year && <p className="text-[10px] text-zinc-700 mt-0.5 tabular-nums">{year}</p>}
       </div>
 
       {menuRect && (
