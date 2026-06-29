@@ -196,6 +196,7 @@ export default async function DiscoverPage({
           albums={shuffledGenre[i] ?? []}
           isLoggedIn={isLoggedIn}
           href={`/genre/${encodeURIComponent(tag)}`}
+          tag={tag}
           favoriteButton={
             isLoggedIn ? (
               <FavoriteGenreButton tag={tag} isFavorite={favoriteTags.has(tag)} />

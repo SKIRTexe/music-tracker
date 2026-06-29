@@ -166,15 +166,17 @@ export async function searchArtists(query: string, limit = 20): Promise<MBArtist
   return (data as { artists?: MBArtist[] }).artists ?? [];
 }
 
-export async function getGenreAlbums(tag: string, limit = 16, priority: "high" | "low" = "low"): Promise<MBAlbum[]> {
+export async function getGenreAlbums(tag: string, limit = 16, priority: "high" | "low" = "low", releaseType: "album" | "single" = "album"): Promise<MBAlbum[]> {
+  const primaryType = releaseType === "single" ? "Single" : "Album";
   try {
     const data = await mbFetch("/release", {
-      query: `tag:${tag} AND primarytype:Album`,
+      query: `tag:${tag} AND primarytype:${primaryType}`,
       limit: String(limit),
     }, priority);
     const seen = new Set<string>();
     return ((data as { releases?: MBAlbum[] }).releases ?? [])
-      .filter((r) => { const k = r.title.toLowerCase().trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+      .filter((r) => { const k = r.title.toLowerCase().trim(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .map((r) => ({ ...r, releaseType }));
   } catch { return []; }
 }
 
