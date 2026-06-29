@@ -83,7 +83,8 @@ export function YearRangeSlider({
 
   const fromPct = pct(from);
   const toPct = pct(to);
-  const startDecade = `${Math.floor(from / 10) * 10}s`;
+  const fromDecade = `${Math.floor(from / 10) * 10}s`;
+  const toDecade = `${Math.floor(to / 10) * 10}s`;
 
   return (
     <div className="flex items-center gap-4">
@@ -117,18 +118,25 @@ export function YearRangeSlider({
       </div>
 
       {/* Year label */}
-      <div className="shrink-0 flex items-center gap-1.5 w-28">
+      <div className="shrink-0 flex items-center gap-1 w-32">
         {isFiltered ? (
           <>
             <Link
-              href={`/decade/${startDecade}`}
+              href={`/decade/${fromDecade}`}
               className="text-xs text-zinc-300 hover:text-zinc-100 transition-colors tabular-nums"
             >
-              {from} – {to}
+              {from}
+            </Link>
+            <span className="text-xs text-zinc-600">–</span>
+            <Link
+              href={`/decade/${toDecade}`}
+              className="text-xs text-zinc-300 hover:text-zinc-100 transition-colors tabular-nums"
+            >
+              {to}
             </Link>
             <button
               onClick={clear}
-              className="text-zinc-700 hover:text-zinc-400 transition-colors text-[10px]"
+              className="text-zinc-700 hover:text-zinc-400 transition-colors text-[10px] ml-0.5"
               title="Clear filter"
             >
               ✕
