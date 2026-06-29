@@ -34,7 +34,7 @@ export async function getWikipediaArticle(
     const articleRes = await fetch(
       `https://en.wikipedia.org/w/api.php?action=query&titles=${title}&prop=extracts&explaintext=true&format=json&formatversion=2`,
       {
-        headers: { "User-Agent": "MusicTracker/0.1 (music-tracker app; contact@example.com)" },
+        headers: { "User-Agent": "Recordcrate/0.1 (recordcrate app; contact@example.com)" },
         next: { revalidate: 86400 },
       }
     );

@@ -1,6 +1,6 @@
 const MB_BASE = "https://musicbrainz.org/ws/2";
 const CAA_BASE = "https://coverartarchive.org";
-const USER_AGENT = "MusicTracker/0.1 (contact@example.com)";
+const USER_AGENT = "Recordcrate/0.1 (contact@example.com)";
 
 // ── In-process cache (survives hot-reloads in dev, avoids rate-limit hammering) ──
 const mbCache = new Map<string, { data: unknown; expires: number }>();

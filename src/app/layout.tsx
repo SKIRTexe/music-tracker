@@ -6,7 +6,7 @@ import { Navbar } from "@/components/Navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MusicLog — Track albums you love",
+  title: "Recordcrate — Track albums you love",
   description: "Log, rate, and review albums. Like Letterboxd for music.",
 };
 
