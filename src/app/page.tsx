@@ -55,8 +55,10 @@ export default async function DiscoverPage({
       const results = await searchArtists(q, 25);
       return (
         <div className="max-w-5xl mx-auto">
-          <ModeToggle mode="artists" />
-          <SearchBar defaultValue={q} mode="artists" />
+          <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
+            <ModeToggle mode="artists" />
+            <SearchBar defaultValue={q} mode="artists" />
+          </div>
           <p className="text-xs text-zinc-600 mb-6">
             {results.length} artists for &ldquo;{q}&rdquo;
           </p>
@@ -76,8 +78,10 @@ export default async function DiscoverPage({
     const results = await searchAlbums(q, 25);
     return (
       <div className="max-w-5xl mx-auto">
-        <ModeToggle mode="albums" />
-        <SearchBar defaultValue={q} mode="albums" />
+        <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
+          <ModeToggle mode="albums" />
+          <SearchBar defaultValue={q} mode="albums" />
+        </div>
         <p className="text-xs text-zinc-600 mb-6">
           {results.length} results for &ldquo;{q}&rdquo;
         </p>
@@ -135,8 +139,10 @@ export default async function DiscoverPage({
 
     return (
       <div className="max-w-5xl mx-auto">
-        <ModeToggle mode="artists" />
-        <SearchBar defaultValue="" mode="artists" />
+        <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
+          <ModeToggle mode="artists" />
+          <SearchBar defaultValue="" mode="artists" />
+        </div>
         <ArtistCarousel title="Recommended Artists" artists={recommendedArtists} />
         {sortedGenres.map(({ label, tag }, i) => (
           <ArtistCarousel
@@ -179,8 +185,10 @@ export default async function DiscoverPage({
 
   return (
     <div className="max-w-5xl mx-auto">
-      <ModeToggle mode="albums" />
-      <SearchBar defaultValue="" mode="albums" />
+      <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
+        <ModeToggle mode="albums" />
+        <SearchBar defaultValue="" mode="albums" />
+      </div>
 
       <Carousel
         title="Recommended"
@@ -210,7 +218,7 @@ export default async function DiscoverPage({
 
 function ModeToggle({ mode }: { mode: "albums" | "artists" }) {
   return (
-    <div className="flex border border-zinc-800 rounded overflow-hidden text-xs w-fit mb-6">
+    <div className="flex border border-zinc-800 rounded overflow-hidden text-xs w-fit">
       <Link
         href="/"
         className={`px-4 py-2 transition-colors ${
@@ -237,7 +245,7 @@ function ModeToggle({ mode }: { mode: "albums" | "artists" }) {
 
 function SearchBar({ defaultValue, mode }: { defaultValue: string; mode: "albums" | "artists" }) {
   return (
-    <form method="GET" className="flex gap-2 mb-10">
+    <form method="GET" className="flex gap-2">
       {mode === "artists" && <input type="hidden" name="mode" value="artists" />}
       <input
         name="q"
