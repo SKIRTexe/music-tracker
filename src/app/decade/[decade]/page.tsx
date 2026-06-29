@@ -38,15 +38,21 @@ export default async function DecadePage({
 
   const { startYear, endYear } = parseDecade(decade);
 
-  const [genreResults, featuredAlbums, session, wikiArticle] = await Promise.all([
+  const [genreResults, session, wikiArticle] = await Promise.all([
     Promise.all(GENRES.map(({ tag }) => getDecadeAlbums(startYear, endYear, tag, 20, "high"))),
-    getDecadeAlbums(startYear, endYear, undefined, 12, "high"),
     auth(),
     getWikipediaArticle(`${decade} in music`),
   ]);
 
+  // Build recommended by sampling 2 from each genre — diverse cross-genre mix
+  const seenIds = new Set<string>();
+  const recommended = genreResults
+    .flatMap((pool) => pool.slice(0, 3))
+    .filter((a) => { if (seenIds.has(a.id)) return false; seenIds.add(a.id); return true; })
+    .slice(0, 16);
+
   // Resolve artwork for all displayed albums in parallel
-  const allAlbums = [...featuredAlbums, ...genreResults.flat()];
+  const allAlbums = [...recommended, ...genreResults.flat()];
   const unique = [...new Map(allAlbums.map((a) => [a.id, a])).values()];
   await Promise.all(
     unique.map(async (album) => {
@@ -56,7 +62,7 @@ export default async function DecadePage({
     })
   );
 
-  const slideshowAlbums = featuredAlbums.slice(0, 6).map((a) => ({
+  const slideshowAlbums = recommended.slice(0, 6).map((a) => ({
     title: a.title,
     artist: a["artist-credit"]?.[0]?.artist?.name ?? "",
   }));
@@ -94,6 +100,12 @@ export default async function DecadePage({
         </section>
       )}
 
+      <Carousel
+        title="Recommended"
+        albums={recommended}
+        isLoggedIn={!!session?.user}
+      />
+
       {GENRES.map(({ label, tag }, i) => {
         const albums = genreResults[i] ?? [];
         if (albums.length === 0) return null;
@@ -104,6 +116,7 @@ export default async function DecadePage({
             albums={albums}
             isLoggedIn={!!session?.user}
             href={`/genre/${encodeURIComponent(tag)}`}
+            tag={tag}
           />
         );
       })}
