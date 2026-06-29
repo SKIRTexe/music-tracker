@@ -70,18 +70,58 @@ function MemberRow({ rel }: { rel: MBArtistRelation }) {
   );
 }
 
+const VISIBLE_CAP = 5;
+
 export function BandMembers({ members }: { members: MBArtistRelation[] }) {
+  const [sortDesc, setSortDesc] = useState(true); // true = most recent first
+  const [expanded, setExpanded] = useState(false);
+
   if (members.length === 0) return null;
+
+  const sorted = [...members].sort((a, b) => {
+    const ay = a.begin ? parseInt(a.begin.slice(0, 4)) : 0;
+    const by = b.begin ? parseInt(b.begin.slice(0, 4)) : 0;
+    return sortDesc ? by - ay : ay - by;
+  });
+
+  const visible = expanded ? sorted : sorted.slice(0, VISIBLE_CAP);
+  const overflow = sorted.length - VISIBLE_CAP;
+
   return (
     <div>
-      <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
-        Members
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest">
+          Members
+        </h2>
+        <button
+          onClick={() => setSortDesc((d) => !d)}
+          title={sortDesc ? "Sorted: most recent first" : "Sorted: least recent first"}
+          className="text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          {sortDesc ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12l7 7 7-7"/>
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
+            </svg>
+          )}
+        </button>
+      </div>
       <div className="flex flex-col divide-y divide-zinc-800/60">
-        {members.map((rel) => (
+        {visible.map((rel) => (
           <MemberRow key={rel.artist.id} rel={rel} />
         ))}
       </div>
+      {overflow > 0 && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-2 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          {expanded ? "Show less" : `Show ${overflow} more`}
+        </button>
+      )}
     </div>
   );
 }
