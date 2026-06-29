@@ -70,7 +70,7 @@ function MemberRow({ rel }: { rel: MBArtistRelation }) {
   );
 }
 
-const VISIBLE_CAP = 5;
+const COLLAPSED_CAP = 5;
 
 export function BandMembers({ members }: { members: MBArtistRelation[] }) {
   const [sortDesc, setSortDesc] = useState(true); // true = most recent first
@@ -84,8 +84,8 @@ export function BandMembers({ members }: { members: MBArtistRelation[] }) {
     return sortDesc ? by - ay : ay - by;
   });
 
-  const visible = expanded ? sorted : sorted.slice(0, VISIBLE_CAP);
-  const overflow = sorted.length - VISIBLE_CAP;
+  const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_CAP);
+  const overflow = sorted.length - COLLAPSED_CAP;
 
   return (
     <div>
