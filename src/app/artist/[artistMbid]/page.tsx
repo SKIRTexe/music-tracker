@@ -9,7 +9,7 @@ import { auth } from "@/lib/auth";
 import { ExpandableAlbums } from "@/components/ExpandableAlbums";
 import { ExpandableArtists } from "@/components/ExpandableArtists";
 import { ArtistSlideshow } from "@/components/ArtistSlideshow";
-import { ArtistPageHeader } from "@/components/ArtistPageHeader";
+import { BandMembers } from "@/components/BandMembers";
 import { getWikipediaArticle } from "@/lib/wikipedia";
 import { ExpandableText } from "@/components/ExpandableText";
 import Link from "next/link";
@@ -90,52 +90,60 @@ export default async function ArtistPage({
       <ArtistSlideshow albums={slideshowAlbums} artistName={name} />
 
       {/* Header: left = info + about, right = members */}
-      <ArtistPageHeader members={members}>
-        <h1 className="text-2xl font-semibold text-zinc-100 mb-1">{name}</h1>
-        {disambiguation && (
-          <p className="text-sm text-zinc-500 mb-2">{disambiguation}</p>
-        )}
-        <div className="flex flex-wrap gap-3 text-xs text-zinc-600 mb-3">
-          {country && <span>{country}</span>}
-          {formed && (
-            <span>{disbanded ? `${formed}–${disbanded}` : `Est. ${formed}`}</span>
+      <div className="flex gap-10 mb-10">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-semibold text-zinc-100 mb-1">{name}</h1>
+          {disambiguation && (
+            <p className="text-sm text-zinc-500 mb-2">{disambiguation}</p>
+          )}
+          <div className="flex flex-wrap gap-3 text-xs text-zinc-600 mb-3">
+            {country && <span>{country}</span>}
+            {formed && (
+              <span>{disbanded ? `${formed}–${disbanded}` : `Est. ${formed}`}</span>
+            )}
+          </div>
+
+          {genres.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              {genres.slice(0, 8).map((g) => (
+                <Link
+                  key={g.id}
+                  href={`/genre/${encodeURIComponent(g.name)}`}
+                  className="text-[10px] px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors capitalize"
+                >
+                  {g.name}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* About — full Wikipedia intro */}
+          {wikiArticle.intro && (
+            <section className="mb-8">
+              <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+                About
+              </h2>
+              <ExpandableText text={wikiArticle.intro} initialParagraphs={3} />
+            </section>
+          )}
+
+          {/* History — Wikipedia history/career/background section */}
+          {wikiArticle.history && (
+            <section className="mb-8">
+              <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+                History
+              </h2>
+              <ExpandableText text={wikiArticle.history} initialParagraphs={3} />
+            </section>
           )}
         </div>
 
-        {genres.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-5">
-            {genres.slice(0, 8).map((g) => (
-              <Link
-                key={g.id}
-                href={`/genre/${encodeURIComponent(g.name)}`}
-                className="text-[10px] px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors capitalize"
-              >
-                {g.name}
-              </Link>
-            ))}
-          </div>
+        {members.length > 0 && (
+          <aside className="w-56 shrink-0">
+            <BandMembers members={members} />
+          </aside>
         )}
-
-        {/* About — full Wikipedia intro */}
-        {wikiArticle.intro && (
-          <section className="mb-8">
-            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
-              About
-            </h2>
-            <ExpandableText text={wikiArticle.intro} initialParagraphs={3} />
-          </section>
-        )}
-
-        {/* History — Wikipedia history/career/background section */}
-        {wikiArticle.history && (
-          <section className="mb-8">
-            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
-              History
-            </h2>
-            <ExpandableText text={wikiArticle.history} initialParagraphs={3} />
-          </section>
-        )}
-      </ArtistPageHeader>
+      </div>
 
       <ExpandableAlbums title="Discography" albums={albums} singles={singles} isLoggedIn={!!session?.user} />
 
