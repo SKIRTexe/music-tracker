@@ -180,6 +180,26 @@ export async function getGenreAlbums(tag: string, limit = 16, priority: "high" |
   } catch { return []; }
 }
 
+export async function getDecadeAlbums(
+  startYear: number,
+  endYear: number,
+  genre?: string,
+  limit = 20,
+  priority: "high" | "low" = "low",
+): Promise<MBAlbum[]> {
+  const genrePart = genre ? ` AND tag:${genre}` : "";
+  try {
+    const data = await mbFetch("/release", {
+      query: `date:[${startYear}-01-01 TO ${endYear}-12-31] AND primarytype:Album${genrePart}`,
+      limit: String(limit),
+    }, priority);
+    const seen = new Set<string>();
+    return ((data as { releases?: MBAlbum[] }).releases ?? [])
+      .filter((r) => { const k = r.title.toLowerCase().trim(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .map((r) => ({ ...r, releaseType: "album" as const }));
+  } catch { return []; }
+}
+
 export async function getGenreArtists(tag: string, limit = 16, priority: "high" | "low" = "low"): Promise<MBArtist[]> {
   try {
     const data = await mbFetch("/artist", {

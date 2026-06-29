@@ -3,6 +3,7 @@ import {
   searchArtists,
   getGenreAlbums,
   getGenreArtists,
+  getDecadeAlbums,
 } from "@/lib/musicbrainz";
 import { resolveAlbumArtwork, resolveArtistArtwork } from "@/lib/artwork";
 import type { MBAlbum } from "@/lib/musicbrainz";
@@ -15,6 +16,7 @@ import { ArtistCarousel } from "@/components/ArtistCarousel";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { FavoriteGenreButton } from "@/components/FavoriteGenreButton";
+import { YearRangeSlider, YEAR_MIN, YEAR_MAX } from "@/components/YearRangeSlider";
 import Link from "next/link";
 
 function shuffle<T>(arr: T[]): T[] {
@@ -42,9 +44,12 @@ const GENRES = [
 export default async function DiscoverPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; mode?: string }>;
+  searchParams: Promise<{ q?: string; mode?: string; from?: string; to?: string }>;
 }) {
-  const { q, mode } = await searchParams;
+  const { q, mode, from: fromParam, to: toParam } = await searchParams;
+  const fromYear = fromParam ? Math.max(YEAR_MIN, parseInt(fromParam)) : YEAR_MIN;
+  const toYear = toParam ? Math.min(YEAR_MAX, parseInt(toParam)) : YEAR_MAX;
+  const isDateFiltered = fromYear !== YEAR_MIN || toYear !== YEAR_MAX;
   const isArtistMode = mode === "artists";
   const session = await auth();
   const isLoggedIn = !!session?.user;
@@ -158,7 +163,11 @@ export default async function DiscoverPage({
 
   // ── Albums mode (default) ──────────────────────────────────────────────────
   const genreResults = await Promise.all(
-    sortedGenres.map(({ tag }) => getGenreAlbums(tag, 50))
+    sortedGenres.map(({ tag }) =>
+      isDateFiltered
+        ? getDecadeAlbums(fromYear, toYear, tag, 20)
+        : getGenreAlbums(tag, 50)
+    )
   );
 
   // Shuffle once — same result used for pre-resolution and render
@@ -188,10 +197,11 @@ export default async function DiscoverPage({
       <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
         <ModeToggle mode="albums" />
         <SearchBar defaultValue="" mode="albums" />
+        <YearRangeSlider initialFrom={fromYear} initialTo={toYear} />
       </div>
 
       <Carousel
-        title="Recommended"
+        title={isDateFiltered ? `${fromYear} – ${toYear}` : "Recommended"}
         albums={recommended}
         isLoggedIn={isLoggedIn}
         href="/recommended"

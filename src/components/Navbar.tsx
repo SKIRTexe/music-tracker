@@ -28,6 +28,9 @@ export async function Navbar() {
           <Link href="/" className="text-zinc-500 hover:text-zinc-200 transition-colors">
             Discover
           </Link>
+          <Link href="/decade" className="text-zinc-500 hover:text-zinc-200 transition-colors">
+            Decades
+          </Link>
           <Link href="/library" className="text-zinc-500 hover:text-zinc-200 transition-colors">
             My Library
           </Link>
