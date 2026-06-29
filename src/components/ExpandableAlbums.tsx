@@ -67,37 +67,56 @@ type ReleaseFilter = "albums" | "singles" | "both";
 export function ExpandableAlbums({
   title,
   albums,
-  singles = [],
+  artistMbid,
   isLoggedIn,
 }: {
   title: string;
   albums: MBAlbum[];
-  singles?: MBAlbum[];
+  artistMbid?: string;
   isLoggedIn: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
   const [filter, setFilter] = useState<ReleaseFilter>("albums");
+  const [singles, setSingles] = useState<MBAlbum[] | null>(null);
+  const [loadingSingles, setLoadingSingles] = useState(false);
 
-  const hasSingles = singles.length > 0;
+  const fetchSingles = async () => {
+    if (singles !== null || !artistMbid) return;
+    setLoadingSingles(true);
+    try {
+      const res = await fetch(`/api/artist-singles?mbid=${encodeURIComponent(artistMbid)}`);
+      const data = await res.json();
+      setSingles(data.singles ?? []);
+    } catch {
+      setSingles([]);
+    } finally {
+      setLoadingSingles(false);
+    }
+  };
 
+  const handleFilter = (f: ReleaseFilter) => {
+    setFilter(f);
+    if (f === "singles" || f === "both") fetchSingles();
+  };
+
+  const resolvedSingles = singles ?? [];
   const combined =
     filter === "albums" ? albums :
-    filter === "singles" ? singles :
-    [...albums, ...singles];
+    filter === "singles" ? resolvedSingles :
+    [...albums, ...resolvedSingles];
 
-  if (combined.length === 0 && !hasSingles) return null;
-  if (combined.length === 0) return null;
+  if (albums.length === 0) return null;
 
   const sorted = sortAlbums(combined, sort);
   const isTimeline = sort === "newest" || sort === "oldest";
 
-  const filterTabs = hasSingles ? (
+  const filterTabs = artistMbid ? (
     <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
       {(["albums", "singles", "both"] as ReleaseFilter[]).map((f, i) => (
         <button
           key={f}
-          onClick={() => setFilter(f)}
+          onClick={() => handleFilter(f)}
           className={`px-3 py-1.5 capitalize transition-colors ${
             filter === f ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
           } ${i !== 0 ? "border-l border-zinc-800" : ""}`}
@@ -138,9 +157,15 @@ export function ExpandableAlbums({
 
       {/* Carousel — sorted by current filter */}
       <div className="flex gap-4 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {sorted.slice(0, 10).map((album) => (
-          <AlbumCard key={album.id} album={album} isLoggedIn={isLoggedIn} />
-        ))}
+        {loadingSingles ? (
+          <p className="text-xs text-zinc-600 py-4">Loading singles…</p>
+        ) : sorted.length === 0 ? (
+          <p className="text-xs text-zinc-600 py-4">No results.</p>
+        ) : (
+          sorted.slice(0, 10).map((album) => (
+            <AlbumCard key={album.id} album={album} isLoggedIn={isLoggedIn} />
+          ))
+        )}
       </div>
 
       {/* Full popup */}

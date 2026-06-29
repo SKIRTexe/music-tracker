@@ -43,9 +43,8 @@ export default async function ArtistPage({
   const genres: MBGenre[] = artist.genres ?? [];
   const genreTags = genres.slice(0, 5).map((g) => g.name);
 
-  const [albums, singles, session, similarArtists, wikiArticle] = await Promise.all([
+  const [albums, session, similarArtists, wikiArticle] = await Promise.all([
     getArtistAlbums(artistMbid, 40, "album"),
-    getArtistAlbums(artistMbid, 40, "single"),
     auth(),
     getSimilarArtists(genreTags, artistMbid, 12),
     getWikipediaArticle(artist.name ?? ""),
@@ -145,7 +144,7 @@ export default async function ArtistPage({
         )}
       </div>
 
-      <ExpandableAlbums title="Discography" albums={albums} singles={singles} isLoggedIn={!!session?.user} />
+      <ExpandableAlbums title="Discography" albums={albums} artistMbid={artistMbid} isLoggedIn={!!session?.user} />
 
       {similarArtists.length > 0 && (
         <ExpandableArtists title="Similar Artists" artists={similarArtists} />
