@@ -120,6 +120,7 @@ export interface MBAlbum {
   "artist-credit"?: Array<{ artist: { id: string; name: string } }>;
   coverUrl?: string;
   genres?: MBGenre[];
+  releaseType?: "album" | "single";
 }
 
 export interface MBArtist {
@@ -267,12 +268,12 @@ export async function getArtist(artistMbid: string): Promise<MBArtist> {
   return mbFetch(`/artist/${artistMbid}`, { inc: "artist-rels+genres" }) as Promise<MBArtist>;
 }
 
-export async function getArtistAlbums(artistMbid: string, limit = 25): Promise<MBAlbum[]> {
+export async function getArtistAlbums(artistMbid: string, limit = 25, releaseType: "album" | "single" = "album"): Promise<MBAlbum[]> {
   try {
     const data = await mbFetch("/release", {
       artist: artistMbid,
       limit: "100", // fetch max so dedup has enough to work with
-      type: "album",
+      type: releaseType,
       inc: "artist-credits",
     }, "high");
     const releases = (data as { releases?: MBAlbum[] }).releases ?? [];
@@ -285,7 +286,8 @@ export async function getArtistAlbums(artistMbid: string, limit = 25): Promise<M
         seen.add(key);
         return true;
       })
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((r) => ({ ...r, releaseType }));
   } catch { return []; }
 }
 

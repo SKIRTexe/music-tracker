@@ -62,33 +62,65 @@ function DiscographyTimeline({ albums, isLoggedIn }: { albums: MBAlbum[]; isLogg
   );
 }
 
+type ReleaseFilter = "albums" | "singles" | "both";
+
 export function ExpandableAlbums({
   title,
   albums,
+  singles = [],
   isLoggedIn,
 }: {
   title: string;
   albums: MBAlbum[];
+  singles?: MBAlbum[];
   isLoggedIn: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
+  const [filter, setFilter] = useState<ReleaseFilter>("albums");
 
-  if (albums.length === 0) return null;
+  const hasSingles = singles.length > 0;
 
-  const sorted = sortAlbums(albums, sort);
+  const combined =
+    filter === "albums" ? albums :
+    filter === "singles" ? singles :
+    [...albums, ...singles];
+
+  if (combined.length === 0 && !hasSingles) return null;
+  if (combined.length === 0) return null;
+
+  const sorted = sortAlbums(combined, sort);
   const isTimeline = sort === "newest" || sort === "oldest";
+
+  const filterTabs = hasSingles ? (
+    <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
+      {(["albums", "singles", "both"] as ReleaseFilter[]).map((f, i) => (
+        <button
+          key={f}
+          onClick={() => setFilter(f)}
+          className={`px-3 py-1.5 capitalize transition-colors ${
+            filter === f ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+          } ${i !== 0 ? "border-l border-zinc-800" : ""}`}
+        >
+          {f}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <section className="mb-10">
-      {/* Header: clickable title + inline sort tabs */}
+      {/* Header: clickable title + filter checkboxes + inline sort tabs */}
       <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => setOpen(true)}
-          className="text-xs font-medium text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors"
-        >
-          {title} →
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setOpen(true)}
+            className="text-xs font-medium text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors"
+          >
+            {title} →
+          </button>
+          {filterTabs}
+        </div>
         <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
           {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
             <button
@@ -120,7 +152,10 @@ export function ExpandableAlbums({
           />
           <div className="fixed inset-4 md:inset-10 z-50 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
-              <h2 className="text-sm font-medium text-zinc-200">{title}</h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-sm font-medium text-zinc-200">{title}</h2>
+                {filterTabs}
+              </div>
               <div className="flex items-center gap-4">
                 <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
                   {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
