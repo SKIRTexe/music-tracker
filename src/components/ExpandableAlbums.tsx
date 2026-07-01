@@ -136,32 +136,6 @@ export function ExpandableAlbums({
 
   return (
     <section className="mb-10">
-      {/* Header: clickable title + filter checkboxes + inline sort tabs */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setOpen(true)}
-            className="text-xs font-medium text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors"
-          >
-            {title} →
-          </button>
-          {filterTabs}
-        </div>
-        <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
-          {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setSort(s)}
-              className={`px-3 py-1.5 transition-colors ${
-                sort === s ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
-              } ${s !== "recommended" ? "border-l border-zinc-800" : ""}`}
-            >
-              {SORT_LABELS[s]}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Search bar */}
       <div className="relative mb-4">
         <svg
@@ -186,6 +160,32 @@ export function ExpandableAlbums({
             ✕
           </button>
         )}
+      </div>
+
+      {/* Header: clickable title + filter tabs + sort tabs */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setOpen(true)}
+            className="text-xs font-medium text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors"
+          >
+            {title} →
+          </button>
+          {filterTabs}
+        </div>
+        <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
+          {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSort(s)}
+              className={`px-3 py-1.5 transition-colors ${
+                sort === s ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+              } ${s !== "recommended" ? "border-l border-zinc-800" : ""}`}
+            >
+              {SORT_LABELS[s]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Carousel */}
