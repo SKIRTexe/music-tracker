@@ -80,6 +80,7 @@ export function ExpandableAlbums({
   const [filter, setFilter] = useState<ReleaseFilter>("albums");
   const [singles, setSingles] = useState<MBAlbum[] | null>(null);
   const [loadingSingles, setLoadingSingles] = useState(false);
+  const [search, setSearch] = useState("");
 
   const fetchSingles = async () => {
     if (singles !== null || !artistMbid) return;
@@ -109,6 +110,12 @@ export function ExpandableAlbums({
   if (albums.length === 0) return null;
 
   const sorted = sortAlbums(combined, sort);
+  const filtered = search.trim()
+    ? sorted.filter((a) =>
+        a.title.toLowerCase().includes(search.toLowerCase()) ||
+        (a.date?.slice(0, 4) ?? "").includes(search.trim())
+      )
+    : sorted;
   const isTimeline = sort === "newest" || sort === "oldest";
 
   const filterTabs = artistMbid ? (
@@ -155,14 +162,40 @@ export function ExpandableAlbums({
         </div>
       </div>
 
-      {/* Carousel — sorted by current filter */}
+      {/* Search bar */}
+      <div className="relative mb-4">
+        <svg
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none"
+          width="12" height="12" viewBox="0 0 20 20" fill="none"
+        >
+          <circle cx="8.5" cy="8.5" r="5.75" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search discography…"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors text-xs"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Carousel */}
       <div className="flex gap-4 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {loadingSingles ? (
           <p className="text-xs text-zinc-600 py-4">Loading singles…</p>
-        ) : sorted.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <p className="text-xs text-zinc-600 py-4">No results.</p>
         ) : (
-          sorted.slice(0, 10).map((album) => (
+          filtered.slice(0, search ? filtered.length : 10).map((album) => (
             <AlbumCard key={album.id} album={album} isLoggedIn={isLoggedIn} />
           ))
         )}
@@ -176,12 +209,37 @@ export function ExpandableAlbums({
             onClick={() => setOpen(false)}
           />
           <div className="fixed inset-4 md:inset-10 z-50 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0 gap-4">
+              <div className="flex items-center gap-4 shrink-0">
                 <h2 className="text-sm font-medium text-zinc-200">{title}</h2>
                 {filterTabs}
               </div>
-              <div className="flex items-center gap-4">
+              {/* Search inside popup */}
+              <div className="relative flex-1 max-w-xs">
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none"
+                  width="12" height="12" viewBox="0 0 20 20" fill="none"
+                >
+                  <circle cx="8.5" cy="8.5" r="5.75" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search…"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-4 shrink-0">
                 <div className="flex border border-zinc-800 rounded overflow-hidden text-xs">
                   {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
                     <button
@@ -204,11 +262,13 @@ export function ExpandableAlbums({
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
-              {isTimeline ? (
-                <DiscographyTimeline albums={sorted} isLoggedIn={isLoggedIn} />
+              {filtered.length === 0 ? (
+                <p className="text-xs text-zinc-600 py-4">No results.</p>
+              ) : isTimeline ? (
+                <DiscographyTimeline albums={filtered} isLoggedIn={isLoggedIn} />
               ) : (
                 <div className="flex flex-wrap gap-4">
-                  {sorted.map((album) => (
+                  {filtered.map((album) => (
                     <AlbumCard key={album.id} album={album} isLoggedIn={isLoggedIn} />
                   ))}
                 </div>
