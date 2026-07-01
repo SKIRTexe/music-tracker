@@ -6,6 +6,7 @@ export async function GET(req: NextRequest) {
   const isCountry = req.nextUrl.searchParams.get("country") === "1";
   if (!slug) return NextResponse.json({ genres: [] });
 
-  const genres = await getLocationTopGenres(slug, isCountry, 8, "low");
+  const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "8");
+  const genres = await getLocationTopGenres(slug, isCountry, isNaN(limit) ? 8 : limit, "low");
   return NextResponse.json({ genres });
 }

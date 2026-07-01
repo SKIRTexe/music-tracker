@@ -116,6 +116,7 @@ export default async function LocationPage({
           slug={slug}
           countryParam={countryParam}
           isLoggedIn={isLoggedIn}
+          displayName={displayName}
         />
       )}
     </div>

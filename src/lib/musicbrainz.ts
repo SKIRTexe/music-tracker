@@ -342,6 +342,24 @@ export async function getLocationTopGenres(
   } catch { return []; }
 }
 
+export async function searchAlbumsByArtists(
+  artistIds: string[],
+  query: string,
+  limit = 20,
+  priority: "high" | "low" = "low"
+): Promise<MBAlbum[]> {
+  if (artistIds.length === 0) return [];
+  try {
+    const aridPart = artistIds.map((id) => `arid:${id}`).join(" OR ");
+    const term = /\s/.test(query) ? `"${query}"` : query;
+    const data = await mbFetch("/release", {
+      query: `(${aridPart}) AND (release:${term} OR artist:${term}) AND primarytype:Album`,
+      limit: String(limit),
+    }, priority);
+    return (data as { releases?: MBAlbum[] }).releases ?? [];
+  } catch { return []; }
+}
+
 export async function getFeaturedAlbums(limit = 16): Promise<MBAlbum[]> {
   try {
     const data = await mbFetch("/release", {
