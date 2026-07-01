@@ -30,6 +30,44 @@ const DECADE_TAGLINES: Record<string, string> = {
   "2020s": "A New Decade",
 };
 
+// Genre list: [label, tag, related tags...]
+const GENRE_LIST: { label: string; tag: string; related: { label: string; tag: string }[] }[] = [
+  { label: "Rock",           tag: "rock",           related: [{ label: "Alternative Rock", tag: "alternative rock" }, { label: "Indie Rock", tag: "indie rock" }, { label: "Classic Rock", tag: "classic rock" }, { label: "Punk Rock", tag: "punk rock" }] },
+  { label: "Hip-Hop",        tag: "hip-hop",        related: [{ label: "Rap", tag: "rap" }, { label: "Trap", tag: "trap" }, { label: "R&B", tag: "r&b" }, { label: "Boom Bap", tag: "boom bap" }] },
+  { label: "Jazz",           tag: "jazz",           related: [{ label: "Bebop", tag: "bebop" }, { label: "Smooth Jazz", tag: "smooth jazz" }, { label: "Blues", tag: "blues" }, { label: "Soul Jazz", tag: "soul jazz" }] },
+  { label: "Electronic",     tag: "electronic",     related: [{ label: "House", tag: "house" }, { label: "Techno", tag: "techno" }, { label: "Ambient", tag: "ambient" }, { label: "Drum and Bass", tag: "drum and bass" }] },
+  { label: "Pop",            tag: "pop",            related: [{ label: "Synth-Pop", tag: "synth-pop" }, { label: "Indie Pop", tag: "indie pop" }, { label: "Dream Pop", tag: "dream pop" }, { label: "Art Pop", tag: "art pop" }] },
+  { label: "Soul",           tag: "soul",           related: [{ label: "R&B", tag: "r&b" }, { label: "Funk", tag: "funk" }, { label: "Gospel", tag: "gospel" }, { label: "Neo Soul", tag: "neo soul" }] },
+  { label: "Metal",          tag: "metal",          related: [{ label: "Heavy Metal", tag: "heavy metal" }, { label: "Death Metal", tag: "death metal" }, { label: "Black Metal", tag: "black metal" }, { label: "Doom Metal", tag: "doom metal" }] },
+  { label: "Folk",           tag: "folk",           related: [{ label: "Indie Folk", tag: "indie folk" }, { label: "Country", tag: "country" }, { label: "Bluegrass", tag: "bluegrass" }, { label: "Singer-Songwriter", tag: "singer-songwriter" }] },
+  { label: "Classical",      tag: "classical",      related: [{ label: "Opera", tag: "opera" }, { label: "Baroque", tag: "baroque" }, { label: "Orchestral", tag: "orchestral" }, { label: "Chamber Music", tag: "chamber music" }] },
+  { label: "Indie",          tag: "indie",          related: [{ label: "Indie Rock", tag: "indie rock" }, { label: "Indie Pop", tag: "indie pop" }, { label: "Lo-Fi", tag: "lo-fi" }, { label: "Post-Rock", tag: "post-rock" }] },
+  { label: "Punk",           tag: "punk",           related: [{ label: "Punk Rock", tag: "punk rock" }, { label: "Post-Punk", tag: "post-punk" }, { label: "Hardcore", tag: "hardcore" }, { label: "Ska", tag: "ska" }] },
+  { label: "R&B",            tag: "r&b",            related: [{ label: "Soul", tag: "soul" }, { label: "Neo Soul", tag: "neo soul" }, { label: "Funk", tag: "funk" }, { label: "Hip-Hop", tag: "hip-hop" }] },
+  { label: "Blues",          tag: "blues",          related: [{ label: "Jazz", tag: "jazz" }, { label: "Soul", tag: "soul" }, { label: "Rock and Roll", tag: "rock and roll" }, { label: "Delta Blues", tag: "delta blues" }] },
+  { label: "Country",        tag: "country",        related: [{ label: "Folk", tag: "folk" }, { label: "Bluegrass", tag: "bluegrass" }, { label: "Americana", tag: "americana" }, { label: "Alt-Country", tag: "alt-country" }] },
+  { label: "Reggae",         tag: "reggae",         related: [{ label: "Ska", tag: "ska" }, { label: "Dub", tag: "dub" }, { label: "Dancehall", tag: "dancehall" }, { label: "Rocksteady", tag: "rocksteady" }] },
+  { label: "Funk",           tag: "funk",           related: [{ label: "Soul", tag: "soul" }, { label: "Disco", tag: "disco" }, { label: "R&B", tag: "r&b" }, { label: "Jazz-Funk", tag: "jazz-funk" }] },
+  { label: "Disco",          tag: "disco",          related: [{ label: "Funk", tag: "funk" }, { label: "Dance", tag: "dance" }, { label: "House", tag: "house" }, { label: "Soul", tag: "soul" }] },
+  { label: "Ambient",        tag: "ambient",        related: [{ label: "Electronic", tag: "electronic" }, { label: "New Age", tag: "new age" }, { label: "Drone", tag: "drone" }, { label: "Experimental", tag: "experimental" }] },
+  { label: "House",          tag: "house",          related: [{ label: "Electronic", tag: "electronic" }, { label: "Techno", tag: "techno" }, { label: "Deep House", tag: "deep house" }, { label: "Disco", tag: "disco" }] },
+  { label: "Experimental",   tag: "experimental",   related: [{ label: "Avant-Garde", tag: "avant-garde" }, { label: "Noise", tag: "noise" }, { label: "Ambient", tag: "ambient" }, { label: "Electronic", tag: "electronic" }] },
+];
+
+function detectGenres(q: string): { label: string; tag: string; related: { label: string; tag: string }[] } | null {
+  const s = q.trim().toLowerCase();
+  // Exact tag match first
+  const exact = GENRE_LIST.find((g) => g.tag === s || g.label.toLowerCase() === s);
+  if (exact) return exact;
+  // Starts-with match
+  const starts = GENRE_LIST.find((g) => g.tag.startsWith(s) || g.label.toLowerCase().startsWith(s));
+  if (starts) return starts;
+  // Contains match
+  const contains = GENRE_LIST.find((g) => g.tag.includes(s) || g.label.toLowerCase().includes(s));
+  if (contains) return contains;
+  return null;
+}
+
 function detectDecade(q: string): string | null {
   const s = q.trim().toLowerCase().replace(/^the\s+/, "");
   // "1950s" … "2020s" or "1950" … "2020"
@@ -84,12 +122,13 @@ export default async function DiscoverPage({
   // ── Search mode ────────────────────────────────────────────────────────────
   if (q) {
     const decadeSlug = detectDecade(q);
+    const genreMatch = detectGenres(q);
     const [artists, albums] = await Promise.all([
       searchArtists(q, 10),
       searchAlbums(q, 25),
     ]);
 
-    const total = artists.length + albums.length + (decadeSlug ? 1 : 0);
+    const total = artists.length + albums.length + (decadeSlug ? 1 : 0) + (genreMatch ? 1 : 0);
 
     return (
       <div className="max-w-5xl mx-auto">
@@ -116,6 +155,41 @@ export default async function DiscoverPage({
                 Decade Page
               </span>
             </Link>
+          </div>
+        )}
+
+        {/* Genre page results */}
+        {genreMatch && (
+          <div className="mb-8">
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-3">Genre Pages</p>
+            <div className="flex flex-wrap gap-3">
+              {/* Primary match */}
+              <Link
+                href={`/genre/${encodeURIComponent(genreMatch.tag)}`}
+                className="inline-flex items-center gap-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors px-5 py-4"
+              >
+                <div>
+                  <p className="text-2xl font-bold text-zinc-100 leading-none mb-1">{genreMatch.label}</p>
+                  <p className="text-xs text-zinc-500">Browse {genreMatch.label} albums &amp; artists</p>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 tracking-wide shrink-0">
+                  Genre Page
+                </span>
+              </Link>
+              {/* Related genres */}
+              {genreMatch.related.map(({ label, tag }) => (
+                <Link
+                  key={tag}
+                  href={`/genre/${encodeURIComponent(tag)}`}
+                  className="inline-flex items-center gap-3 rounded-xl bg-zinc-900/60 border border-zinc-800/60 hover:border-zinc-600 transition-colors px-4 py-3"
+                >
+                  <p className="text-sm font-medium text-zinc-300 leading-none">{label}</p>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 tracking-wide shrink-0">
+                    Related
+                  </span>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 

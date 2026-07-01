@@ -296,7 +296,15 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
           <p className="text-xs text-zinc-500 truncate">{artist}</p>
         )}
         <div className="flex items-center gap-1.5 mt-0.5">
-          {year && <span className="text-[10px] text-zinc-700 tabular-nums">{year}</span>}
+          {year && (
+            <Link
+              href={`/decade/${Math.floor(parseInt(year) / 10) * 10}s`}
+              className="text-[10px] text-zinc-700 hover:text-zinc-400 transition-colors tabular-nums"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {year}
+            </Link>
+          )}
           {album.releaseType === "single" && (
             <span className="text-[9px] px-1 py-px rounded bg-zinc-800 text-zinc-500 tracking-wide leading-none">
               Single

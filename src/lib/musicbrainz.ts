@@ -153,17 +153,23 @@ export interface MBTrack {
 // ── Queries ─────────────────────────────────────────────────────────────────────
 
 export async function searchAlbums(query: string, limit = 20): Promise<MBAlbum[]> {
-  const data = await mbFetch(
-    "/release",
-    { query: `(release:${query} OR artist:${query}) AND primarytype:Album`, limit: String(limit) },
-    "high"
-  );
-  return (data as { releases?: MBAlbum[] }).releases ?? [];
+  try {
+    // Quote multi-word terms so Lucene parses them as phrases
+    const term = /\s/.test(query) ? `"${query}"` : query;
+    const data = await mbFetch(
+      "/release",
+      { query: `(release:${term} OR artist:${term}) AND primarytype:Album`, limit: String(limit) },
+      "high"
+    );
+    return (data as { releases?: MBAlbum[] }).releases ?? [];
+  } catch { return []; }
 }
 
 export async function searchArtists(query: string, limit = 20): Promise<MBArtist[]> {
-  const data = await mbFetch("/artist", { query, limit: String(limit) }, "high");
-  return (data as { artists?: MBArtist[] }).artists ?? [];
+  try {
+    const data = await mbFetch("/artist", { query, limit: String(limit) }, "high");
+    return (data as { artists?: MBArtist[] }).artists ?? [];
+  } catch { return []; }
 }
 
 export async function getGenreAlbums(tag: string, limit = 16, priority: "high" | "low" = "low", releaseType: "album" | "single" = "album"): Promise<MBAlbum[]> {
