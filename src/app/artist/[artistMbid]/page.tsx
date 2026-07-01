@@ -1,15 +1,14 @@
 import {
   getArtist,
   getArtistAlbums,
-  getSimilarArtists,
   type MBArtistRelation,
   type MBGenre,
 } from "@/lib/musicbrainz";
 import { auth } from "@/lib/auth";
 import { ExpandableAlbums } from "@/components/ExpandableAlbums";
-import { ExpandableArtists } from "@/components/ExpandableArtists";
 import { ArtistSlideshow } from "@/components/ArtistSlideshow";
 import { BandMembers } from "@/components/BandMembers";
+import { LazySimilarArtists } from "@/components/LazySimilarArtists";
 import { getWikipediaArticle } from "@/lib/wikipedia";
 import { ExpandableText } from "@/components/ExpandableText";
 import Link from "next/link";
@@ -43,10 +42,9 @@ export default async function ArtistPage({
   const genres: MBGenre[] = artist.genres ?? [];
   const genreTags = genres.slice(0, 5).map((g) => g.name);
 
-  const [albums, session, similarArtists, wikiArticle] = await Promise.all([
+  const [albums, session, wikiArticle] = await Promise.all([
     getArtistAlbums(artistMbid, 40, "album"),
     auth(),
-    getSimilarArtists(genreTags, artistMbid, 12),
     getWikipediaArticle(artist.name ?? ""),
   ]);
 
@@ -175,8 +173,10 @@ export default async function ArtistPage({
 
       <ExpandableAlbums title="Discography" albums={albums} artistMbid={artistMbid} isLoggedIn={!!session?.user} />
 
-      {similarArtists.length > 0 && (
-        <ExpandableArtists title="Similar Artists" artists={similarArtists} />
+      {genreTags.length > 0 && (
+        <LazySimilarArtists
+          fetchUrl={`/api/similar-artists?mbid=${artistMbid}&tags=${encodeURIComponent(genreTags.join(","))}`}
+        />
       )}
     </div>
   );
