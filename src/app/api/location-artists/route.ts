@@ -3,10 +3,11 @@ import { getLocationArtists } from "@/lib/musicbrainz";
 import { resolveArtistArtwork } from "@/lib/artwork";
 
 export async function GET(req: NextRequest) {
-  const name = req.nextUrl.searchParams.get("name");
-  if (!name) return NextResponse.json({ artists: [] });
+  const slug = req.nextUrl.searchParams.get("slug");
+  const isCountry = req.nextUrl.searchParams.get("country") === "1";
+  if (!slug) return NextResponse.json({ artists: [] });
 
-  const artists = await getLocationArtists(name, 20, "low");
+  const artists = await getLocationArtists(slug, isCountry, 20, "low");
 
   await Promise.all(
     artists.map(async (a) => {

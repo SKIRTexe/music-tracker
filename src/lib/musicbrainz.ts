@@ -236,10 +236,21 @@ export async function getLocationAlbums(
   priority: "high" | "low" = "low"
 ): Promise<MBAlbum[]> {
   try {
+    // Step 1: find artists native to this location.
+    // For countries, use the artist `country` ISO field (reliable nationality).
+    // For cities, use the artist `area` field.
+    // This result is cached by mbFetch, so all genre carousels share one lookup.
+    const artistQuery = isCountry
+      ? `country:${slug} AND (type:Group OR type:Person)`
+      : `area:"${slug}" AND (type:Group OR type:Person)`;
+    const artistData = await mbFetch("/artist", { query: artistQuery, limit: "20" }, priority);
+    const artists = (artistData as { artists?: { id: string }[] }).artists ?? [];
+    if (artists.length === 0) return [];
+
+    // Step 2: fetch albums by those artists, optionally filtered by genre.
+    const aridPart = artists.map((a) => `arid:${a.id}`).join(" OR ");
     const genrePart = genre ? ` AND tag:${genre}` : "";
-    const query = isCountry
-      ? `country:${slug} AND primarytype:Album${genrePart}`
-      : `tag:"${slug.toLowerCase()}" AND primarytype:Album${genrePart}`;
+    const query = `(${aridPart}) AND primarytype:Album${genrePart}`;
     const data = await mbFetch("/release", { query, limit: String(limit) }, priority);
     const seen = new Set<string>();
     return ((data as { releases?: MBAlbum[] }).releases ?? [])
@@ -248,15 +259,16 @@ export async function getLocationAlbums(
 }
 
 export async function getLocationArtists(
-  locationName: string,
+  slug: string,
+  isCountry: boolean,
   limit = 20,
   priority: "high" | "low" = "low"
 ): Promise<MBArtist[]> {
   try {
-    const data = await mbFetch("/artist", {
-      query: `area:"${locationName}" AND (type:Group OR type:Person)`,
-      limit: String(limit),
-    }, priority);
+    const query = isCountry
+      ? `country:${slug} AND (type:Group OR type:Person)`
+      : `area:"${slug}" AND (type:Group OR type:Person)`;
+    const data = await mbFetch("/artist", { query, limit: String(limit) }, priority);
     return (data as { artists?: MBArtist[] }).artists ?? [];
   } catch { return []; }
 }

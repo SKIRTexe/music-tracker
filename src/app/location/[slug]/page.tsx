@@ -121,7 +121,7 @@ export default async function LocationPage({
         // Artists mode — one lazy carousel
         <LazyLocationArtistCarousel
           title={`Artists from ${displayName}`}
-          fetchUrl={`/api/location-artists?name=${encodedName}`}
+          fetchUrl={`/api/location-artists?slug=${encodedSlug}${countryParam}`}
         />
       ) : (
         // Albums mode — per-genre lazy carousels
