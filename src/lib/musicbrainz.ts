@@ -273,6 +273,75 @@ export async function getLocationArtists(
   } catch { return []; }
 }
 
+// Known music genre tags — used to filter out demographic/descriptor tags
+// (e.g. "british", "male vocalist", "influential") from artist tag lists.
+const GENRE_WHITELIST = new Set([
+  "rock","pop","jazz","electronic","hip-hop","hip hop","soul","folk","metal",
+  "classical","country","blues","r&b","reggae","punk","alternative","indie",
+  "dance","funk","gospel","latin","ambient","experimental","world music",
+  "new wave","post-rock","grunge","heavy metal","death metal","black metal",
+  "thrash metal","progressive rock","psychedelic rock","hard rock","soft rock",
+  "synth-pop","house","techno","drum and bass","dubstep","trip-hop","lo-fi",
+  "emo","post-punk","noise rock","bossa nova","samba","afrobeat","flamenco",
+  "k-pop","j-pop","baroque","opera","bluegrass","country rock","jazz fusion",
+  "soul jazz","neo soul","garage rock","indie rock","indie pop","art rock",
+  "post-metal","doom metal","power metal","glam rock","disco","club",
+  "minimal","trance","electro","breakbeat","jungle","grime","trap","drill",
+]);
+
+const TAG_LABEL: Record<string, string> = {
+  "hip-hop": "Hip-Hop", "hip hop": "Hip-Hop", "r&b": "R&B",
+  "k-pop": "K-Pop", "j-pop": "J-Pop", "lo-fi": "Lo-Fi",
+  "post-rock": "Post-Rock", "post-punk": "Post-Punk", "post-metal": "Post-Metal",
+  "new wave": "New Wave", "world music": "World Music", "bossa nova": "Bossa Nova",
+  "neo soul": "Neo Soul", "soul jazz": "Soul Jazz", "jazz fusion": "Jazz Fusion",
+  "art rock": "Art Rock", "indie rock": "Indie Rock", "indie pop": "Indie Pop",
+  "garage rock": "Garage Rock", "noise rock": "Noise Rock", "hard rock": "Hard Rock",
+  "soft rock": "Soft Rock", "glam rock": "Glam Rock", "country rock": "Country Rock",
+  "psychedelic rock": "Psychedelic Rock", "progressive rock": "Progressive Rock",
+  "heavy metal": "Heavy Metal", "death metal": "Death Metal", "black metal": "Black Metal",
+  "thrash metal": "Thrash Metal", "doom metal": "Doom Metal", "power metal": "Power Metal",
+  "synth-pop": "Synth-Pop", "drum and bass": "Drum & Bass",
+};
+
+function genreLabel(tag: string): string {
+  return TAG_LABEL[tag] ?? tag.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export async function getLocationTopGenres(
+  slug: string,
+  isCountry: boolean,
+  limit = 8,
+  priority: "high" | "low" = "low"
+): Promise<{ label: string; tag: string }[]> {
+  try {
+    // Same artist query as getLocationAlbums/getLocationArtists — cached by mbFetch.
+    const artistQuery = isCountry
+      ? `country:${slug} AND (type:Group OR type:Person)`
+      : `area:"${slug}" AND (type:Group OR type:Person)`;
+    const data = await mbFetch("/artist", { query: artistQuery, limit: "25" }, priority);
+    const artists = (data as {
+      artists?: Array<{ tags?: { name: string; count: number }[] }>
+    }).artists ?? [];
+
+    // Aggregate tag counts across all returned artists.
+    const counts = new Map<string, number>();
+    for (const artist of artists) {
+      for (const tag of artist.tags ?? []) {
+        const name = tag.name.toLowerCase();
+        if (GENRE_WHITELIST.has(name)) {
+          counts.set(name, (counts.get(name) ?? 0) + tag.count);
+        }
+      }
+    }
+
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([tag]) => ({ label: genreLabel(tag), tag }));
+  } catch { return []; }
+}
+
 export async function getFeaturedAlbums(limit = 16): Promise<MBAlbum[]> {
   try {
     const data = await mbFetch("/release", {

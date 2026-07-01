@@ -2,19 +2,9 @@ import { auth } from "@/lib/auth";
 import { getWikipediaArticle } from "@/lib/wikipedia";
 import { ExpandableText } from "@/components/ExpandableText";
 import { GenreSlideshow } from "@/components/GenreSlideshow";
-import { LazyLocationAlbumCarousel, LazyLocationArtistCarousel } from "@/components/LazyLocationCarousel";
+import { LazyLocationArtistCarousel } from "@/components/LazyLocationCarousel";
+import { LocationAlbumsSection } from "@/components/LocationAlbumsSection";
 import Link from "next/link";
-
-const GENRES = [
-  { label: "Rock",       tag: "rock" },
-  { label: "Jazz",       tag: "jazz" },
-  { label: "Electronic", tag: "electronic" },
-  { label: "Hip-Hop",    tag: "hip-hop" },
-  { label: "Pop",        tag: "pop" },
-  { label: "Soul",       tag: "soul" },
-  { label: "Folk",       tag: "folk" },
-  { label: "Metal",      tag: "metal" },
-];
 
 function capitalizeWords(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -84,7 +74,6 @@ export default async function LocationPage({
 
   const countryParam = isCountry ? "&country=1" : "";
   const encodedSlug = encodeURIComponent(slug);
-  const encodedName = encodeURIComponent(displayName);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -118,23 +107,16 @@ export default async function LocationPage({
       <ModeToggle slug={slug} mode={isArtistMode ? "artists" : "albums"} />
 
       {isArtistMode ? (
-        // Artists mode — one lazy carousel
         <LazyLocationArtistCarousel
           title={`Artists from ${displayName}`}
           fetchUrl={`/api/location-artists?slug=${encodedSlug}${countryParam}`}
         />
       ) : (
-        // Albums mode — per-genre lazy carousels
-        GENRES.map(({ label, tag }) => (
-          <LazyLocationAlbumCarousel
-            key={tag}
-            title={label}
-            fetchUrl={`/api/location-albums?slug=${encodedSlug}${countryParam}&genre=${encodeURIComponent(tag)}`}
-            isLoggedIn={isLoggedIn}
-            href={`/genre/${encodeURIComponent(tag)}`}
-            tag={tag}
-          />
-        ))
+        <LocationAlbumsSection
+          slug={slug}
+          countryParam={countryParam}
+          isLoggedIn={isLoggedIn}
+        />
       )}
     </div>
   );
