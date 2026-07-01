@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AlbumActions } from "@/components/AlbumActions";
 import { ImageSlideshow } from "@/components/ImageSlideshow";
+import { LazyArtistLocation } from "@/components/LazyArtistLocation";
 import { getWikipediaArticle } from "@/lib/wikipedia";
 import { ExpandableText } from "@/components/ExpandableText";
 import Link from "next/link";
@@ -65,15 +66,6 @@ export default async function AlbumPage({
   const year = album.date ? album.date.slice(0, 4) : null;
   const tracks = album.media?.flatMap((m) => m.tracks ?? []) ?? [];
   const genres: MBGenre[] = album.genres ?? [];
-
-  // Location tags — release country (ISO → full name)
-  const locationTags: { label: string; slug: string }[] = [];
-  if (album.country) {
-    try {
-      const countryName = new Intl.DisplayNames(["en"], { type: "region" }).of(album.country);
-      if (countryName) locationTags.push({ label: countryName, slug: album.country });
-    } catch { /* unsupported code — skip */ }
-  }
 
   const [artworkUrl, caaImages, session, wikiArticle] = await Promise.all([
     getItunesArtwork(album.title, artist),
@@ -149,20 +141,8 @@ export default async function AlbumPage({
             </div>
           )}
 
-          {/* Location tags */}
-          {locationTags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {locationTags.map(({ label, slug }) => (
-                <Link
-                  key={label}
-                  href={`/location/${encodeURIComponent(slug)}`}
-                  className="text-[10px] px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
-                >
-                  📍 {label}
-                </Link>
-              ))}
-            </div>
-          )}
+          {/* Location tags — lazy-loaded from artist's origin, not release country */}
+          {artistId && <LazyArtistLocation artistMbid={artistId} />}
 
           <AlbumActions
             mbid={mbid}
