@@ -1,6 +1,7 @@
 import {
   searchAlbums,
   searchArtists,
+  searchTags,
   getGenreAlbums,
   getGenreArtists,
   getDecadeAlbums,
@@ -162,10 +163,20 @@ export default async function DiscoverPage({
   if (q) {
     const decadeSlug = detectDecade(q);
     const genreMatch = getGenreSuggestion(q);
-    const [artists, albums] = await Promise.all([
+    const [artists, albums, mbTags] = await Promise.all([
       searchArtists(q, 10),
       searchAlbums(q, 25),
+      searchTags(q, 8),
     ]);
+
+    // If the static list found no related genres, use MusicBrainz tag results
+    // (excluding the query itself as the primary card already covers it)
+    if (genreMatch.related.length === 0 && mbTags.length > 0) {
+      genreMatch.related = mbTags
+        .filter((t) => t.name.toLowerCase() !== q.trim().toLowerCase())
+        .slice(0, 5)
+        .map((t) => ({ label: formatGenreLabel(t.name), tag: t.name }));
+    }
 
     const total = artists.length + albums.length + (decadeSlug ? 1 : 0) + 1;
 

@@ -54,6 +54,22 @@ export default async function ArtistPage({
   const disambiguation: string | undefined = artist.disambiguation;
   const country: string | undefined = artist.country;
   const lifeSpan = artist["life-span"];
+
+  // Build location tags: country name + city/area (deduplicated)
+  const locationTags: { label: string; slug: string }[] = [];
+  const seen = new Set<string>();
+  const addLocation = (label: string, slug: string) => {
+    if (!seen.has(label)) { seen.add(label); locationTags.push({ label, slug }); }
+  };
+  if (country) {
+    try {
+      const countryName = new Intl.DisplayNames(["en"], { type: "region" }).of(country);
+      if (countryName) addLocation(countryName, country);
+    } catch { /* unsupported code */ }
+  }
+  if (artist.area?.name && artist.area.name !== artist.country) addLocation(artist.area.name, artist.area.name);
+  if (artist["begin-area"]?.name && artist["begin-area"].name !== artist.area?.name)
+    addLocation(artist["begin-area"].name, artist["begin-area"].name);
   const formed: string | undefined = lifeSpan?.begin ? lifeSpan.begin.slice(0, 4) : undefined;
   const disbanded: string | undefined =
     lifeSpan?.ended && lifeSpan.end ? lifeSpan.end.slice(0, 4) : undefined;
@@ -96,14 +112,13 @@ export default async function ArtistPage({
             <p className="text-sm text-zinc-500 mb-2">{disambiguation}</p>
           )}
           <div className="flex flex-wrap gap-3 text-xs text-zinc-600 mb-3">
-            {country && <span>{country}</span>}
             {formed && (
               <span>{disbanded ? `${formed}–${disbanded}` : `Est. ${formed}`}</span>
             )}
           </div>
 
           {genres.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-5">
+            <div className="flex flex-wrap gap-1.5 mb-2">
               {genres.slice(0, 8).map((g) => (
                 <Link
                   key={g.id}
@@ -111,6 +126,20 @@ export default async function ArtistPage({
                   className="text-[10px] px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors capitalize"
                 >
                   {g.name}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {locationTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              {locationTags.map(({ label, slug }) => (
+                <Link
+                  key={label}
+                  href={`/location/${encodeURIComponent(slug)}`}
+                  className="text-[10px] px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  📍 {label}
                 </Link>
               ))}
             </div>

@@ -66,6 +66,15 @@ export default async function AlbumPage({
   const tracks = album.media?.flatMap((m) => m.tracks ?? []) ?? [];
   const genres: MBGenre[] = album.genres ?? [];
 
+  // Location tags — release country (ISO → full name)
+  const locationTags: { label: string; slug: string }[] = [];
+  if (album.country) {
+    try {
+      const countryName = new Intl.DisplayNames(["en"], { type: "region" }).of(album.country);
+      if (countryName) locationTags.push({ label: countryName, slug: album.country });
+    } catch { /* unsupported code — skip */ }
+  }
+
   const [artworkUrl, caaImages, session, wikiArticle] = await Promise.all([
     getItunesArtwork(album.title, artist),
     getAlbumImages(mbid),
@@ -127,7 +136,7 @@ export default async function AlbumPage({
 
           {/* Genre tags */}
           {genres.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-4">
+            <div className="flex flex-wrap gap-1.5 mb-2">
               {genres.slice(0, 6).map((g) => (
                 <Link
                   key={g.id}
@@ -135,6 +144,21 @@ export default async function AlbumPage({
                   className="text-[10px] px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors capitalize"
                 >
                   {g.name}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* Location tags */}
+          {locationTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {locationTags.map(({ label, slug }) => (
+                <Link
+                  key={label}
+                  href={`/location/${encodeURIComponent(slug)}`}
+                  className="text-[10px] px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-600 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  📍 {label}
                 </Link>
               ))}
             </div>

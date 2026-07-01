@@ -117,6 +117,7 @@ export interface MBAlbum {
   id: string;
   title: string;
   date?: string;
+  country?: string;
   "artist-credit"?: Array<{ artist: { id: string; name: string } }>;
   coverUrl?: string;
   genres?: MBGenre[];
@@ -128,6 +129,8 @@ export interface MBArtist {
   name: string;
   disambiguation?: string;
   country?: string;
+  area?: { id: string; name: string };
+  "begin-area"?: { id: string; name: string };
   "life-span"?: { begin?: string; end?: string; ended?: boolean };
   relations?: MBArtistRelation[];
   genres?: MBGenre[];
@@ -151,6 +154,13 @@ export interface MBTrack {
 }
 
 // ── Queries ─────────────────────────────────────────────────────────────────────
+
+export async function searchTags(query: string, limit = 6): Promise<{ name: string }[]> {
+  try {
+    const data = await mbFetch("/tag", { query, limit: String(limit) }, "high");
+    return (data as { tags?: { name: string }[] }).tags ?? [];
+  } catch { return []; }
+}
 
 export async function searchAlbums(query: string, limit = 20): Promise<MBAlbum[]> {
   try {
@@ -215,6 +225,39 @@ export async function getGenreArtists(tag: string, limit = 16, priority: "high" 
     const seen = new Set<string>();
     return ((data as { artists?: MBArtist[] }).artists ?? [])
       .filter((a) => { if (seen.has(a.id)) return false; seen.add(a.id); return true; });
+  } catch { return []; }
+}
+
+export async function getLocationAlbums(
+  slug: string,
+  isCountry: boolean,
+  genre?: string,
+  limit = 20,
+  priority: "high" | "low" = "low"
+): Promise<MBAlbum[]> {
+  try {
+    const genrePart = genre ? ` AND tag:${genre}` : "";
+    const query = isCountry
+      ? `country:${slug} AND primarytype:Album${genrePart}`
+      : `tag:"${slug.toLowerCase()}" AND primarytype:Album${genrePart}`;
+    const data = await mbFetch("/release", { query, limit: String(limit) }, priority);
+    const seen = new Set<string>();
+    return ((data as { releases?: MBAlbum[] }).releases ?? [])
+      .filter((r) => { const k = r.title.toLowerCase().trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+  } catch { return []; }
+}
+
+export async function getLocationArtists(
+  locationName: string,
+  limit = 20,
+  priority: "high" | "low" = "low"
+): Promise<MBArtist[]> {
+  try {
+    const data = await mbFetch("/artist", {
+      query: `area:"${locationName}" AND (type:Group OR type:Person)`,
+      limit: String(limit),
+    }, priority);
+    return (data as { artists?: MBArtist[] }).artists ?? [];
   } catch { return []; }
 }
 
