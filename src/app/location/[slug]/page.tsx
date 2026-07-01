@@ -1,13 +1,9 @@
-import { getLocationAlbums, getLocationArtists } from "@/lib/musicbrainz";
-import { resolveAlbumArtwork, resolveArtistArtwork } from "@/lib/artwork";
 import { auth } from "@/lib/auth";
-import { Carousel } from "@/components/Carousel";
-import { ArtistCarousel } from "@/components/ArtistCarousel";
-import { GenreSlideshow } from "@/components/GenreSlideshow";
 import { getWikipediaArticle } from "@/lib/wikipedia";
 import { ExpandableText } from "@/components/ExpandableText";
+import { GenreSlideshow } from "@/components/GenreSlideshow";
+import { LazyLocationAlbumCarousel, LazyLocationArtistCarousel } from "@/components/LazyLocationCarousel";
 import Link from "next/link";
-import type { MBAlbum } from "@/lib/musicbrainz";
 
 const GENRES = [
   { label: "Rock",       tag: "rock" },
@@ -30,9 +26,7 @@ function ModeToggle({ slug, mode }: { slug: string; mode: "albums" | "artists" }
       <Link
         href={`/location/${slug}`}
         className={`px-4 py-2 transition-colors ${
-          mode === "albums"
-            ? "bg-zinc-700 text-zinc-100"
-            : "text-zinc-500 hover:text-zinc-300"
+          mode === "albums" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
         }`}
       >
         Albums
@@ -40,9 +34,7 @@ function ModeToggle({ slug, mode }: { slug: string; mode: "albums" | "artists" }
       <Link
         href={`/location/${slug}?mode=artists`}
         className={`px-4 py-2 border-l border-zinc-800 transition-colors ${
-          mode === "artists"
-            ? "bg-zinc-700 text-zinc-100"
-            : "text-zinc-500 hover:text-zinc-300"
+          mode === "artists" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
         }`}
       >
         Artists
@@ -75,109 +67,24 @@ export default async function LocationPage({
     displayName = capitalizeWords(decodeURIComponent(slug));
   }
 
-  // ── Artist mode ─────────────────────────────────────────────────────────────
-  if (isArtistMode) {
-    const [locationArtists, session, wikiArticle] = await Promise.all([
-      getLocationArtists(displayName, 20, "high"),
-      auth(),
-      getWikipediaArticle(`${displayName} music`),
-    ]);
-
-    const slideshowSummary = wikiArticle.intro
-      ?.split("\n")
-      .find((p) => p.trim().length > 0) ?? undefined;
-
-    // Resolve artwork in parallel
-    await Promise.all(
-      locationArtists.map(async (artist) => {
-        const url = await resolveArtistArtwork(artist.name);
-        if (url) artist.imageUrl = url;
-      })
-    );
-
-    const seenIds = new Set<string>();
-    const recommendedArtists = locationArtists
-      .filter((a) => { if (seenIds.has(a.id)) return false; seenIds.add(a.id); return true; })
-      .slice(0, 16);
-
-    const slideshowAlbums = recommendedArtists.slice(0, 6).map((a) => ({
-      title: a.name,
-      artist: a.name,
-    }));
-
-    return (
-      <div className="max-w-5xl mx-auto">
-        <Link
-          href="/"
-          className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors mb-4 inline-block"
-        >
-          ← Discover
-        </Link>
-
-        <GenreSlideshow albums={slideshowAlbums} genre={displayName} summary={slideshowSummary} />
-
-        {wikiArticle.intro && (
-          <section className="mb-8">
-            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
-              About
-            </h2>
-            <ExpandableText text={wikiArticle.intro} initialParagraphs={3} />
-          </section>
-        )}
-
-        {wikiArticle.history && (
-          <section className="mb-8">
-            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
-              History
-            </h2>
-            <ExpandableText text={wikiArticle.history} initialParagraphs={3} />
-          </section>
-        )}
-
-        <ModeToggle slug={slug} mode="artists" />
-
-        <ArtistCarousel title="Artists" artists={recommendedArtists} />
-      </div>
-    );
-  }
-
-  // ── Album mode ───────────────────────────────────────────────────────────────
-  const [genreResultsRaw, session, wikiArticle] = await Promise.all([
-    Promise.all(
-      GENRES.map(({ tag }) => getLocationAlbums(slug, isCountry, tag, 20, "high"))
-    ),
+  // Only server-side fetches: auth + Wikipedia (no MusicBrainz here)
+  const [session, wikiArticle] = await Promise.all([
     auth(),
     getWikipediaArticle(`${displayName} music`),
   ]);
 
-  const genreResults = genreResultsRaw;
+  const isLoggedIn = !!session?.user;
 
   const slideshowSummary = wikiArticle.intro
     ?.split("\n")
     .find((p) => p.trim().length > 0) ?? undefined;
 
-  // Build recommended by sampling from each genre — diverse cross-genre mix
-  const seenIds = new Set<string>();
-  const recommended = genreResults
-    .flatMap((pool) => pool.slice(0, 3))
-    .filter((a) => { if (seenIds.has(a.id)) return false; seenIds.add(a.id); return true; })
-    .slice(0, 16);
+  // Placeholder slideshow — carousels load client-side
+  const slideshowAlbums = [{ title: displayName, artist: "" }];
 
-  // Resolve artwork for all displayed albums in parallel
-  const allAlbums = [...recommended, ...genreResults.flat()];
-  const unique = [...new Map(allAlbums.map((a) => [a.id, a])).values()];
-  await Promise.all(
-    unique.map(async (album) => {
-      const artist = (album as MBAlbum)["artist-credit"]?.[0]?.artist?.name ?? "";
-      const url = await resolveAlbumArtwork(album.title, artist);
-      if (url) album.coverUrl = url;
-    })
-  );
-
-  const slideshowAlbums = recommended.slice(0, 6).map((a) => ({
-    title: a.title,
-    artist: a["artist-credit"]?.[0]?.artist?.name ?? "",
-  }));
+  const countryParam = isCountry ? "&country=1" : "";
+  const encodedSlug = encodeURIComponent(slug);
+  const encodedName = encodeURIComponent(displayName);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -208,28 +115,27 @@ export default async function LocationPage({
         </section>
       )}
 
-      <ModeToggle slug={slug} mode="albums" />
+      <ModeToggle slug={slug} mode={isArtistMode ? "artists" : "albums"} />
 
-      <Carousel
-        title="Recommended"
-        albums={recommended}
-        isLoggedIn={!!session?.user}
-      />
-
-      {GENRES.map(({ label, tag }, i) => {
-        const albums = genreResults[i] ?? [];
-        if (albums.length === 0) return null;
-        return (
-          <Carousel
+      {isArtistMode ? (
+        // Artists mode — one lazy carousel
+        <LazyLocationArtistCarousel
+          title={`Artists from ${displayName}`}
+          fetchUrl={`/api/location-artists?name=${encodedName}`}
+        />
+      ) : (
+        // Albums mode — per-genre lazy carousels
+        GENRES.map(({ label, tag }) => (
+          <LazyLocationAlbumCarousel
             key={tag}
             title={label}
-            albums={albums}
-            isLoggedIn={!!session?.user}
+            fetchUrl={`/api/location-albums?slug=${encodedSlug}${countryParam}&genre=${encodeURIComponent(tag)}`}
+            isLoggedIn={isLoggedIn}
             href={`/genre/${encodeURIComponent(tag)}`}
             tag={tag}
           />
-        );
-      })}
+        ))
+      )}
     </div>
   );
 }
