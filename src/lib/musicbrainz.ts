@@ -14,7 +14,7 @@ const mbInFlight = new Map<string, Promise<unknown>>();
 // Low-priority:  search/tag queries (genre carousels, featured, similar)
 // High-priority tasks are always pulled from the front of the queue first.
 interface QueueTask {
-  fn: () => Promise<unknown>;
+  fn: (priority: "high" | "low") => Promise<unknown>;
   resolve: (v: unknown) => void;
   reject: (e: unknown) => void;
   priority: "high" | "low";
@@ -30,7 +30,7 @@ async function mbWorker() {
     const idx = mbPendingQueue.findIndex((t) => t.priority === "high");
     const task = mbPendingQueue.splice(idx !== -1 ? idx : 0, 1)[0];
     try {
-      task.resolve(await task.fn());
+      task.resolve(await task.fn(task.priority));
     } catch (err) {
       task.reject(err);
     }
@@ -41,26 +41,30 @@ async function mbWorker() {
   mbWorkerRunning = false;
 }
 
-function enqueue<T>(fn: () => Promise<T>, priority: "high" | "low" = "low"): Promise<T> {
+function enqueue<T>(fn: (priority: "high" | "low") => Promise<T>, priority: "high" | "low" = "low"): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    mbPendingQueue.push({ fn: fn as () => Promise<unknown>, resolve: resolve as (v: unknown) => void, reject, priority });
+    mbPendingQueue.push({ fn: fn as (p: "high" | "low") => Promise<unknown>, resolve: resolve as (v: unknown) => void, reject, priority });
     if (!mbWorkerRunning) mbWorker();
   });
 }
 
-async function mbFetchRaw(urlStr: string): Promise<unknown> {
+// High-priority: 2 attempts, 4s timeout — max ~5s per request
+// Low-priority:  1 attempt,  3s timeout — max ~3s, fail fast to unblock queue
+async function mbFetchRaw(urlStr: string, priority: "high" | "low"): Promise<unknown> {
+  const maxAttempts = priority === "high" ? 2 : 1;
+  const timeoutMs  = priority === "high" ? 4000 : 3000;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
     try {
       const res = await fetch(urlStr, {
         headers: { "User-Agent": USER_AGENT },
         next: { revalidate: 3600 },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (res.status === 503 || res.status === 429) {
         lastErr = new Error(`MusicBrainz rate limited: ${res.status}`);
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
       if (res.status === 404) throw new Error(`MusicBrainz 404: ${urlStr}`);
@@ -92,7 +96,7 @@ async function mbFetch(path: string, params: Record<string, string> = {}, caller
   const isDirectLookup = /^\/(release|artist)\/[0-9a-f-]{36}$/.test(path);
   const priority = isDirectLookup ? "high" : callerPriority;
 
-  const promise = enqueue(() => mbFetchRaw(urlStr), priority).then((data) => {
+  const promise = enqueue((p) => mbFetchRaw(urlStr, p), priority).then((data) => {
     mbCache.set(urlStr, { data, expires: Date.now() + MB_TTL });
     mbInFlight.delete(urlStr);
     return data;
