@@ -19,6 +19,33 @@ import { FavoriteGenreButton } from "@/components/FavoriteGenreButton";
 import { YearRangeSlider, YEAR_MIN, YEAR_MAX } from "@/components/YearRangeSlider";
 import Link from "next/link";
 
+const DECADE_TAGLINES: Record<string, string> = {
+  "1950s": "Birth of Rock 'n' Roll",
+  "1960s": "Revolution & Psychedelia",
+  "1970s": "Disco, Funk & Punk",
+  "1980s": "Synths, MTV & New Wave",
+  "1990s": "Grunge, Hip-Hop & Britpop",
+  "2000s": "Digital Revolution",
+  "2010s": "Streaming Era",
+  "2020s": "A New Decade",
+};
+
+function detectDecade(q: string): string | null {
+  const s = q.trim().toLowerCase().replace(/^the\s+/, "");
+  // "1950s" … "2020s" or "1950" … "2020"
+  const full = s.match(/^(19[5-9]0|20[012]0)s?$/);
+  if (full) return `${full[1]}s`;
+  // "50s" … "90s", "00s", "10s", "20s"
+  const short = s.match(/^([5-9]0|0[012]0?|[12]0)s?$/);
+  if (short) {
+    const n = parseInt(short[1]);
+    const century = n >= 50 ? 1900 : 2000;
+    const base = n < 10 ? n * 10 : n; // handle "0s" edge case
+    return `${century + base}s`;
+  }
+  return null;
+}
+
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -56,48 +83,68 @@ export default async function DiscoverPage({
 
   // ── Search mode ────────────────────────────────────────────────────────────
   if (q) {
-    if (isArtistMode) {
-      const results = await searchArtists(q, 25);
-      return (
-        <div className="max-w-5xl mx-auto">
-          <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
-            <ModeToggle mode="artists" />
-            <SearchBar defaultValue={q} mode="artists" />
-          </div>
-          <p className="text-xs text-zinc-600 mb-6">
-            {results.length} artists for &ldquo;{q}&rdquo;
-          </p>
-          {results.length === 0 ? (
-            <p className="text-zinc-600 text-sm">No artists found.</p>
-          ) : (
-            <div className="flex flex-wrap gap-4">
-              {results.map((artist) => (
-                <ArtistCard key={artist.id} artist={artist} />
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    }
+    const decadeSlug = detectDecade(q);
+    const [artists, albums] = await Promise.all([
+      searchArtists(q, 10),
+      searchAlbums(q, 25),
+    ]);
 
-    const results = await searchAlbums(q, 25);
+    const total = artists.length + albums.length + (decadeSlug ? 1 : 0);
+
     return (
       <div className="max-w-5xl mx-auto">
         <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
-          <ModeToggle mode="albums" />
           <SearchBar defaultValue={q} mode="albums" />
         </div>
         <p className="text-xs text-zinc-600 mb-6">
-          {results.length} results for &ldquo;{q}&rdquo;
+          {total} results for &ldquo;{q}&rdquo;
         </p>
-        {results.length === 0 ? (
-          <p className="text-zinc-600 text-sm">No results found.</p>
-        ) : (
-          <div className="flex flex-wrap gap-4">
-            {results.map((album) => (
-              <AlbumCard key={album.id} album={album} isLoggedIn={isLoggedIn} />
-            ))}
+
+        {/* Decade page result */}
+        {decadeSlug && (
+          <div className="mb-8">
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-3">Page</p>
+            <Link
+              href={`/decade/${decadeSlug}`}
+              className="inline-flex items-center gap-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors px-5 py-4"
+            >
+              <div>
+                <p className="text-2xl font-bold text-zinc-100 leading-none mb-1">{decadeSlug}</p>
+                <p className="text-xs text-zinc-500">{DECADE_TAGLINES[decadeSlug]}</p>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 tracking-wide shrink-0">
+                Decade Page
+              </span>
+            </Link>
           </div>
+        )}
+
+        {/* Artists */}
+        {artists.length > 0 && (
+          <div className="mb-8">
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-3">Artists</p>
+            <div className="flex flex-wrap gap-4">
+              {artists.map((artist) => (
+                <ArtistCard key={artist.id} artist={artist} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Albums */}
+        {albums.length > 0 && (
+          <div>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-3">Albums</p>
+            <div className="flex flex-wrap gap-4">
+              {albums.map((album) => (
+                <AlbumCard key={album.id} album={album} isLoggedIn={isLoggedIn} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {total === 0 && (
+          <p className="text-zinc-600 text-sm">No results found.</p>
         )}
       </div>
     );
@@ -260,7 +307,7 @@ function SearchBar({ defaultValue, mode }: { defaultValue: string; mode: "albums
       <input
         name="q"
         defaultValue={defaultValue}
-        placeholder={mode === "artists" ? "Search artists..." : "Search albums or artists..."}
+        placeholder="Search albums, artists, or decades..."
         autoComplete="off"
         className="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
       />
