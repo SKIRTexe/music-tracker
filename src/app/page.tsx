@@ -54,18 +54,57 @@ const GENRE_LIST: { label: string; tag: string; related: { label: string; tag: s
   { label: "Experimental",   tag: "experimental",   related: [{ label: "Avant-Garde", tag: "avant-garde" }, { label: "Noise", tag: "noise" }, { label: "Ambient", tag: "ambient" }, { label: "Electronic", tag: "electronic" }] },
 ];
 
-function detectGenres(q: string): { label: string; tag: string; related: { label: string; tag: string }[] } | null {
+function formatGenreLabel(q: string): string {
+  return q.trim().split(/[\s-]+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+// Always returns a genre suggestion — static list is used only to find related genres.
+// Any tag is valid on MusicBrainz so we always offer a genre page for the query.
+function getGenreSuggestion(q: string): { label: string; tag: string; related: { label: string; tag: string }[] } {
   const s = q.trim().toLowerCase();
-  // Exact tag match first
+  const label = formatGenreLabel(q);
+
+  const fromRelated = (matched: { label: string; tag: string }, parent: typeof GENRE_LIST[number]) => ({
+    label: matched.label,
+    tag: matched.tag,
+    related: [
+      { label: parent.label, tag: parent.tag },
+      ...parent.related.filter((r) => r.tag !== matched.tag).slice(0, 3),
+    ],
+  });
+
+  // Exact match on top-level
   const exact = GENRE_LIST.find((g) => g.tag === s || g.label.toLowerCase() === s);
   if (exact) return exact;
-  // Starts-with match
+
+  // Exact match in related lists
+  for (const g of GENRE_LIST) {
+    const rel = g.related.find((r) => r.tag === s || r.label.toLowerCase() === s);
+    if (rel) return fromRelated(rel, g);
+  }
+
+  // Starts-with on top-level
   const starts = GENRE_LIST.find((g) => g.tag.startsWith(s) || g.label.toLowerCase().startsWith(s));
   if (starts) return starts;
-  // Contains match
+
+  // Starts-with in related lists
+  for (const g of GENRE_LIST) {
+    const rel = g.related.find((r) => r.tag.startsWith(s) || r.label.toLowerCase().startsWith(s));
+    if (rel) return fromRelated(rel, g);
+  }
+
+  // Contains on top-level
   const contains = GENRE_LIST.find((g) => g.tag.includes(s) || g.label.toLowerCase().includes(s));
   if (contains) return contains;
-  return null;
+
+  // Contains in related lists
+  for (const g of GENRE_LIST) {
+    const rel = g.related.find((r) => r.tag.includes(s) || r.label.toLowerCase().includes(s));
+    if (rel) return fromRelated(rel, g);
+  }
+
+  // No static match — still return a genre card for the raw query
+  return { label, tag: s, related: [] };
 }
 
 function detectDecade(q: string): string | null {
@@ -122,13 +161,13 @@ export default async function DiscoverPage({
   // ── Search mode ────────────────────────────────────────────────────────────
   if (q) {
     const decadeSlug = detectDecade(q);
-    const genreMatch = detectGenres(q);
+    const genreMatch = getGenreSuggestion(q);
     const [artists, albums] = await Promise.all([
       searchArtists(q, 10),
       searchAlbums(q, 25),
     ]);
 
-    const total = artists.length + albums.length + (decadeSlug ? 1 : 0) + (genreMatch ? 1 : 0);
+    const total = artists.length + albums.length + (decadeSlug ? 1 : 0) + 1;
 
     return (
       <div className="max-w-5xl mx-auto">
@@ -159,8 +198,7 @@ export default async function DiscoverPage({
         )}
 
         {/* Genre page results */}
-        {genreMatch && (
-          <div className="mb-8">
+        <div className="mb-8">
             <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-3">Genre Pages</p>
             <div className="flex flex-wrap gap-3">
               {/* Primary match */}
@@ -190,8 +228,7 @@ export default async function DiscoverPage({
                 </Link>
               ))}
             </div>
-          </div>
-        )}
+        </div>
 
         {/* Artists */}
         {artists.length > 0 && (
