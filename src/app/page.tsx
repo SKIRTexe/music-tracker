@@ -18,6 +18,7 @@ import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { FavoriteGenreButton } from "@/components/FavoriteGenreButton";
 import { YearRangeSlider, YEAR_MIN, YEAR_MAX } from "@/components/YearRangeSlider";
+import { CountriesDropdown } from "@/components/CountriesDropdown";
 import Link from "next/link";
 
 const DECADE_TAGLINES: Record<string, string> = {
@@ -366,7 +367,12 @@ export default async function DiscoverPage({
       <div className="sticky top-0 z-40 -mx-4 px-4 bg-zinc-950 border-b border-zinc-800/60 pt-4 pb-3 mb-8 flex flex-col gap-3">
         <ModeToggle mode="albums" />
         <SearchBar defaultValue="" mode="albums" />
-        <YearRangeSlider initialFrom={fromYear} initialTo={toYear} />
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <YearRangeSlider initialFrom={fromYear} initialTo={toYear} />
+          </div>
+          <CountriesDropdown />
+        </div>
       </div>
 
       <Carousel
