@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ComposableMap, Geographies, Geography, type Geography as GeoType } from "react-simple-maps";
 
@@ -37,68 +37,141 @@ const NUM_TO_A2: Record<string, string> = {
   "894":"ZM","051":"AM",
 };
 
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
+
 export function WorldMapPicker({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [tooltip, setTooltip] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
 
-  const handleClick = (geoId: string, name: string) => {
+  // Drag state stored in refs to avoid re-renders during drag
+  const dragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const translateStart = useRef({ x: 0, y: 0 });
+  const didDrag = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Zoom centred on cursor position
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setZoom((z) => {
+      const next = Math.min(Math.max(z * factor, MIN_ZOOM), MAX_ZOOM);
+      // Cursor position relative to container centre
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      // Adjust translate so the point under the cursor stays fixed
+      setTranslate((t) => ({
+        x: cx / next - cx / z + t.x,
+        y: cy / next - cy / z + t.y,
+      }));
+      return next;
+    });
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    dragging.current = true;
+    didDrag.current = false;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    translateStart.current = { ...translate };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragging.current) return;
+    const dx = (e.clientX - dragStart.current.x) / zoom;
+    const dy = (e.clientY - dragStart.current.y) / zoom;
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) didDrag.current = true;
+    setTranslate({ x: translateStart.current.x + dx, y: translateStart.current.y + dy });
+  };
+
+  const handleMouseUp = () => { dragging.current = false; };
+
+  const handleClick = (geoId: string) => {
+    if (didDrag.current) return; // suppress click after drag
     const iso = NUM_TO_A2[geoId];
     if (!iso) return;
     onClose();
     router.push(`/location/${iso}`);
   };
 
+  const resetView = () => { setZoom(1); setTranslate({ x: 0, y: 0 }); };
+
   return (
-    <div className="relative">
+    <div className="relative select-none">
       {/* Tooltip */}
       <div className={`text-center text-xs text-zinc-300 h-5 mb-1 transition-opacity ${tooltip ? "opacity-100" : "opacity-0"}`}>
         {tooltip ?? ""}
       </div>
 
-      <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: 120, center: [0, 20] }}
-        style={{ width: "100%", height: "auto" }}
+      {/* Map container */}
+      <div
+        ref={containerRef}
+        className="overflow-hidden rounded-lg"
+        style={{ cursor: dragging.current ? "grabbing" : "grab" }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
-        <Geographies geography={GEO_URL}>
-          {({ geographies }: { geographies: GeoType[] }) =>
-            geographies.map((geo: GeoType) => {
-              const iso = NUM_TO_A2[geo.id as string];
-              const clickable = !!iso;
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  onMouseEnter={() => setTooltip(geo.properties.name as string)}
-                  onMouseLeave={() => setTooltip(null)}
-                  onClick={() => handleClick(geo.id as string, geo.properties.name as string)}
-                  style={{
-                    default: {
-                      fill: clickable ? "#3f3f46" : "#27272a",
-                      stroke: "#18181b",
-                      strokeWidth: 0.5,
-                      outline: "none",
-                    },
-                    hover: {
-                      fill: clickable ? "#71717a" : "#27272a",
-                      stroke: "#18181b",
-                      strokeWidth: 0.5,
-                      outline: "none",
-                      cursor: clickable ? "pointer" : "default",
-                    },
-                    pressed: {
-                      fill: clickable ? "#a1a1aa" : "#27272a",
-                      stroke: "#18181b",
-                      strokeWidth: 0.5,
-                      outline: "none",
-                    },
-                  }}
-                />
-              );
-            })
-          }
-        </Geographies>
-      </ComposableMap>
+        <div style={{
+          transform: `scale(${zoom}) translate(${translate.x}px, ${translate.y}px)`,
+          transformOrigin: "center center",
+          willChange: "transform",
+        }}>
+          <ComposableMap
+            projection="geoMercator"
+            projectionConfig={{ scale: 120, center: [0, 20] }}
+            style={{ width: "100%", height: "auto" }}
+          >
+            <Geographies geography={GEO_URL}>
+              {({ geographies }: { geographies: GeoType[] }) =>
+                geographies.map((geo: GeoType) => {
+                  const iso = NUM_TO_A2[geo.id as string];
+                  const clickable = !!iso;
+                  return (
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      onMouseEnter={() => setTooltip(geo.properties.name as string)}
+                      onMouseLeave={() => setTooltip(null)}
+                      onClick={() => handleClick(geo.id as string)}
+                      style={{
+                        default: { fill: clickable ? "#3f3f46" : "#27272a", stroke: "#18181b", strokeWidth: 0.5, outline: "none" },
+                        hover:   { fill: clickable ? "#71717a" : "#27272a", stroke: "#18181b", strokeWidth: 0.5, outline: "none", cursor: clickable ? "pointer" : "default" },
+                        pressed: { fill: clickable ? "#a1a1aa" : "#27272a", stroke: "#18181b", strokeWidth: 0.5, outline: "none" },
+                      }}
+                    />
+                  );
+                })
+              }
+            </Geographies>
+          </ComposableMap>
+        </div>
+      </div>
+
+      {/* Zoom controls */}
+      <div className="absolute bottom-2 right-2 flex flex-col gap-1">
+        <button
+          onClick={() => setZoom((z) => Math.min(z * 1.4, MAX_ZOOM))}
+          className="w-6 h-6 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-300 text-sm flex items-center justify-center transition-colors leading-none"
+        >+</button>
+        <button
+          onClick={() => setZoom((z) => Math.max(z / 1.4, MIN_ZOOM))}
+          className="w-6 h-6 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-300 text-sm flex items-center justify-center transition-colors leading-none"
+        >−</button>
+        {(zoom !== 1 || translate.x !== 0 || translate.y !== 0) && (
+          <button
+            onClick={resetView}
+            className="w-6 h-6 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-500 hover:text-zinc-300 text-[9px] flex items-center justify-center transition-colors leading-none"
+            title="Reset view"
+          >⊙</button>
+        )}
+      </div>
     </div>
   );
 }

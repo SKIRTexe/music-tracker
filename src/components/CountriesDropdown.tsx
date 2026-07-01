@@ -32,7 +32,6 @@ export function CountriesDropdown() {
             : "border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
         }`}
       >
-        🌍
         <span>Countries</span>
         <svg
           width="10" height="10" viewBox="0 0 10 10" fill="currentColor"
