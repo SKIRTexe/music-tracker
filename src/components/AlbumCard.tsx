@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useRef, useEffect, useTransition } from "react";
+import { useState, useRef, useEffect, useTransition, forwardRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addAlbumToLibrary, rateAlbumAction } from "@/app/actions";
 import type { MBAlbum } from "@/lib/musicbrainz";
+
+const MENU_W = 192;
+const MENU_H = 220;
+// Approximate height of the sticky search banner (navbar 48px + search bar ~60px)
+const HEADER_H = 108;
 
 // ── Placeholder ────────────────────────────────────────────────────────────────
 
@@ -16,50 +21,36 @@ function Placeholder({ title }: { title: string }) {
   );
 }
 
-// ── Long-press mini popup (no "Listened" — rating handles that) ────────────────
+// ── Long-press mini popup ──────────────────────────────────────────────────────
 
-function LongPressMenu({
-  album,
-  artist,
-  year,
-  artworkUrl,
-  anchorRect,
-  isLoggedIn,
-  isPending,
-  ratingValue,
-  onRatingChange,
-  onAdd,
-  onRate,
-  onClose,
-}: {
-  album: MBAlbum;
-  artist: string;
-  year: string | null;
-  artworkUrl: string | null;
-  anchorRect: DOMRect;
-  isLoggedIn: boolean;
-  isPending: boolean;
-  ratingValue: number;
-  onRatingChange: (v: number) => void;
-  onAdd: (status: string) => void;
-  onRate: () => void;
-  onClose: () => void;
-}) {
-  const menuWidth = 192;
-  const menuHeight = 220;
-  const spaceRight = window.innerWidth - anchorRect.right;
-  const left =
-    spaceRight >= menuWidth + 12
-      ? anchorRect.right + 8
-      : anchorRect.left - menuWidth - 8;
-  const top = Math.min(anchorRect.top, window.innerHeight - menuHeight - 12);
-
+const LongPressMenu = forwardRef<
+  HTMLDivElement,
+  {
+    album: MBAlbum;
+    artist: string;
+    year: string | null;
+    artworkUrl: string | null;
+    initialTop: number;
+    initialLeft: number;
+    isLoggedIn: boolean;
+    isPending: boolean;
+    ratingValue: number;
+    onRatingChange: (v: number) => void;
+    onAdd: (status: string) => void;
+    onRate: () => void;
+    onClose: () => void;
+  }
+>(function LongPressMenu(
+  { album, artist, isLoggedIn, isPending, ratingValue, onRatingChange, onAdd, onRate, onClose, initialTop, initialLeft },
+  ref
+) {
   return (
     <>
       <div className="fixed inset-0 z-40" onPointerDown={onClose} />
       <div
+        ref={ref}
         className="fixed z-50 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 w-48"
-        style={{ top, left }}
+        style={{ top: initialTop, left: initialLeft }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <p className="text-xs font-medium text-zinc-200 line-clamp-1 leading-snug">
@@ -69,7 +60,6 @@ function LongPressMenu({
 
         {isLoggedIn ? (
           <>
-            {/* Status — no "Listened" (rating auto-sets that) */}
             <div className="flex flex-col gap-1 mb-3">
               {(
                 [
@@ -125,6 +115,21 @@ function LongPressMenu({
       </div>
     </>
   );
+});
+
+// ── Position helpers ───────────────────────────────────────────────────────────
+
+function calcMenuPos(cardRect: DOMRect): { top: number; left: number } {
+  const spaceRight = window.innerWidth - cardRect.right;
+  const left =
+    spaceRight >= MENU_W + 12
+      ? cardRect.right + 8
+      : cardRect.left - MENU_W - 8;
+  const top = Math.min(
+    Math.max(cardRect.top, HEADER_H + 8),
+    window.innerHeight - MENU_H - 12
+  );
+  return { top, left };
 }
 
 // ── AlbumCard ──────────────────────────────────────────────────────────────────
@@ -135,38 +140,67 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
   const year = album.date ? album.date.slice(0, 4) : null;
   const router = useRouter();
 
-  // Use pre-resolved iTunes URL if available (fast CDN), else fall back to CAA
   const primaryUrl = album.coverUrl ?? `https://coverartarchive.org/release/${album.id}/front-250`;
   const [imgFailed, setImgFailed] = useState(false);
 
-  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  // menuOpen drives whether the popup is mounted; position is managed imperatively
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [initialPos, setInitialPos] = useState({ top: 0, left: 0 });
   const [ratingValue, setRatingValue] = useState(5.0);
   const [isPending, startTransition] = useTransition();
 
   const cardRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
   const didLongPress = useRef(false);
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
 
-  // Keep menu anchored to the card while scrolling
+  // Imperatively reposition the menu on scroll — no React re-render, no lag
+  const syncPosition = useCallback(() => {
+    const card = cardRef.current;
+    const menu = menuRef.current;
+    if (!card || !menu) return;
+
+    const rect = card.getBoundingClientRect();
+
+    // Hide behind the sticky header
+    if (rect.bottom < HEADER_H) {
+      menu.style.visibility = "hidden";
+      return;
+    }
+    menu.style.visibility = "visible";
+
+    const { top, left } = calcMenuPos(rect);
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+  }, []);
+
   useEffect(() => {
-    if (!menuRect) return;
-    const update = () => {
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (rect) setMenuRect(rect);
+    if (!menuOpen) return;
+
+    const onScroll = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(syncPosition);
     };
-    window.addEventListener("scroll", update, { passive: true, capture: true });
-    return () => window.removeEventListener("scroll", update, { capture: true });
-  }, [menuRect]);
+
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll, { capture: true });
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [menuOpen, syncPosition]);
 
   const startPress = (e: React.PointerEvent) => {
-    if (menuRect) return;
+    if (menuOpen) return;
     pressOrigin.current = { x: e.clientX, y: e.clientY };
     didLongPress.current = false;
     timerRef.current = setTimeout(() => {
       didLongPress.current = true;
-      const rect = cardRef.current?.getBoundingClientRect() ?? null;
-      setMenuRect(rect);
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setInitialPos(calcMenuPos(rect));
+      setMenuOpen(true);
     }, 550);
   };
 
@@ -202,7 +236,7 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
         artistId ?? undefined
       );
     });
-    setMenuRect(null);
+    setMenuOpen(false);
   };
 
   const handleRate = () => {
@@ -214,13 +248,12 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
         artistId ?? undefined
       );
     });
-    setMenuRect(null);
+    setMenuOpen(false);
   };
 
   return (
     <>
       <div className="shrink-0 w-36 select-none">
-        {/* Image — handles album navigation and long-press menu */}
         <div
           ref={cardRef}
           className="aspect-square rounded-lg overflow-hidden bg-zinc-800 cursor-pointer"
@@ -245,7 +278,6 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
           )}
         </div>
 
-        {/* Title — click goes to album page */}
         <p
           className="text-xs font-medium text-zinc-200 mt-2 line-clamp-1 cursor-pointer hover:text-zinc-100 transition-colors"
           onClick={() => router.push(`/album/${album.id}`)}
@@ -253,7 +285,6 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
           {album.title}
         </p>
 
-        {/* Artist — link to artist page */}
         {artistId ? (
           <Link
             href={`/artist/${artistId}`}
@@ -274,20 +305,22 @@ export function AlbumCard({ album, isLoggedIn }: { album: MBAlbum; isLoggedIn: b
         </div>
       </div>
 
-      {menuRect && (
+      {menuOpen && (
         <LongPressMenu
+          ref={menuRef}
           album={album}
           artist={artist}
           year={year}
           artworkUrl={imgFailed ? null : primaryUrl}
-          anchorRect={menuRect}
+          initialTop={initialPos.top}
+          initialLeft={initialPos.left}
           isLoggedIn={isLoggedIn}
           isPending={isPending}
           ratingValue={ratingValue}
           onRatingChange={setRatingValue}
           onAdd={handleAdd}
           onRate={handleRate}
-          onClose={() => setMenuRect(null)}
+          onClose={() => setMenuOpen(false)}
         />
       )}
     </>
