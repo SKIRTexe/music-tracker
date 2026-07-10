@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
@@ -14,12 +14,14 @@ export function LazyLocationAlbumCarousel({
   isLoggedIn,
   href,
   tag,
+  favoriteButton,
 }: {
   title: string;
   fetchUrl: string;
   isLoggedIn: boolean;
   href?: string;
   tag?: string;
+  favoriteButton?: React.ReactNode;
 }) {
   const [albums, setAlbums] = useState<MBAlbum[] | null>(null);
 
@@ -34,17 +36,20 @@ export function LazyLocationAlbumCarousel({
 
   return (
     <section className="mb-10">
-      <div className="flex items-center mb-4">
-        {href ? (
-          <Link href={href} className="group inline-flex items-center gap-1.5">
-            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest group-hover:text-zinc-300 transition-colors">
-              {title}
-            </h2>
-            <span className="text-xs text-zinc-700 group-hover:text-zinc-400 transition-colors">→</span>
-          </Link>
-        ) : (
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest">{title}</h2>
-        )}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          {href ? (
+            <Link href={href} className="group inline-flex items-center gap-1.5">
+              <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest group-hover:text-zinc-300 transition-colors">
+                {title}
+              </h2>
+              <span className="text-xs text-zinc-700 group-hover:text-zinc-400 transition-colors">→</span>
+            </Link>
+          ) : (
+            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest">{title}</h2>
+          )}
+          {favoriteButton}
+        </div>
       </div>
       <div className="flex gap-4 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {albums === null ? (
