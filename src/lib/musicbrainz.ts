@@ -237,7 +237,9 @@ export async function getLocationAlbums(
   isCountry: boolean,
   genre?: string,
   limit = 20,
-  priority: "high" | "low" = "low"
+  priority: "high" | "low" = "low",
+  fromYear?: number,
+  toYear?: number,
 ): Promise<MBAlbum[]> {
   try {
     // Step 1: find artists native to this location.
@@ -251,10 +253,11 @@ export async function getLocationAlbums(
     const artists = (artistData as { artists?: { id: string }[] }).artists ?? [];
     if (artists.length === 0) return [];
 
-    // Step 2: fetch albums by those artists, optionally filtered by genre.
+    // Step 2: fetch albums by those artists, optionally filtered by genre/year.
     const aridPart = artists.map((a) => `arid:${a.id}`).join(" OR ");
     const genrePart = genre ? ` AND tag:${genre}` : "";
-    const query = `(${aridPart}) AND primarytype:Album${genrePart}`;
+    const datePart = fromYear && toYear ? ` AND date:[${fromYear}-01-01 TO ${toYear}-12-31]` : "";
+    const query = `(${aridPart}) AND primarytype:Album${genrePart}${datePart}`;
     const data = await mbFetch("/release", { query, limit: String(limit) }, priority);
     const seen = new Set<string>();
     return ((data as { releases?: MBAlbum[] }).releases ?? [])

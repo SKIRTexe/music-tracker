@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LazyLocationAlbumCarousel } from "@/components/LazyLocationCarousel";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
+import { YearRangeSlider, YEAR_MIN, YEAR_MAX } from "@/components/YearRangeSlider";
 import type { MBAlbum, MBArtist } from "@/lib/musicbrainz";
 
 const DEFAULT_GENRES = [
@@ -28,11 +29,15 @@ export function LocationAlbumsSection({
   countryParam,
   isLoggedIn,
   displayName,
+  fromYear = YEAR_MIN,
+  toYear = YEAR_MAX,
 }: {
   slug: string;
   countryParam: string;   // "" or "&country=1"
   isLoggedIn: boolean;
   displayName: string;
+  fromYear?: number;
+  toYear?: number;
 }) {
   const [genres, setGenres] = useState<Genre[] | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -42,6 +47,9 @@ export function LocationAlbumsSection({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCountryFlag = countryParam === "&country=1" ? "1" : "0";
   const encodedSlug = encodeURIComponent(slug);
+  const isDateFiltered = fromYear !== YEAR_MIN || toYear !== YEAR_MAX;
+  const yearSuffix = isDateFiltered ? `&from=${fromYear}&to=${toYear}` : "";
+  const basePath = `/location/${encodedSlug}`;
 
   // Fetch location genres on mount
   useEffect(() => {
@@ -81,6 +89,11 @@ export function LocationAlbumsSection({
 
   return (
     <div>
+      {/* Year range slider */}
+      <div className="mb-6">
+        <YearRangeSlider initialFrom={fromYear} initialTo={toYear} basePath={basePath} />
+      </div>
+
       {/* Search bar */}
       <div className="relative mb-8">
         <svg
@@ -118,7 +131,7 @@ export function LocationAlbumsSection({
                 <LazyLocationAlbumCarousel
                   key={tag}
                   title={label}
-                  fetchUrl={`/api/location-albums?slug=${encodedSlug}${countryParam}&genre=${encodeURIComponent(tag)}`}
+                  fetchUrl={`/api/location-albums?slug=${encodedSlug}${countryParam}&genre=${encodeURIComponent(tag)}${yearSuffix}`}
                   isLoggedIn={isLoggedIn}
                   href={`/genre/${encodeURIComponent(tag)}`}
                   tag={tag}
@@ -167,7 +180,7 @@ export function LocationAlbumsSection({
                 <LazyLocationAlbumCarousel
                   key={tag}
                   title={label}
-                  fetchUrl={`/api/location-albums?slug=${encodedSlug}${countryParam}&genre=${encodeURIComponent(tag)}`}
+                  fetchUrl={`/api/location-albums?slug=${encodedSlug}${countryParam}&genre=${encodeURIComponent(tag)}${yearSuffix}`}
                   isLoggedIn={isLoggedIn}
                   href={`/genre/${encodeURIComponent(tag)}`}
                   tag={tag}

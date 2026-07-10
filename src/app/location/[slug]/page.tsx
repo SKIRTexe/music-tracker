@@ -4,17 +4,18 @@ import { ExpandableText } from "@/components/ExpandableText";
 import { GenreSlideshow } from "@/components/GenreSlideshow";
 import { LazyLocationArtistCarousel } from "@/components/LazyLocationCarousel";
 import { LocationAlbumsSection } from "@/components/LocationAlbumsSection";
+import { YEAR_MIN, YEAR_MAX } from "@/components/YearRangeSlider";
 import Link from "next/link";
 
 function capitalizeWords(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function ModeToggle({ slug, mode }: { slug: string; mode: "albums" | "artists" }) {
+function ModeToggle({ slug, mode, yearSuffix }: { slug: string; mode: "albums" | "artists"; yearSuffix: string }) {
   return (
     <div className="flex border border-zinc-800 rounded overflow-hidden text-xs w-fit mb-8">
       <Link
-        href={`/location/${slug}`}
+        href={`/location/${slug}${yearSuffix ? `?${yearSuffix.slice(1)}` : ""}`}
         className={`px-4 py-2 transition-colors ${
           mode === "albums" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
         }`}
@@ -22,7 +23,7 @@ function ModeToggle({ slug, mode }: { slug: string; mode: "albums" | "artists" }
         Albums
       </Link>
       <Link
-        href={`/location/${slug}?mode=artists`}
+        href={`/location/${slug}?mode=artists${yearSuffix}`}
         className={`px-4 py-2 border-l border-zinc-800 transition-colors ${
           mode === "artists" ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
         }`}
@@ -38,10 +39,12 @@ export default async function LocationPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; from?: string; to?: string }>;
 }) {
   const { slug } = await params;
-  const { mode } = await searchParams;
+  const { mode, from: fromParam, to: toParam } = await searchParams;
+  const fromYear = fromParam ? Math.max(YEAR_MIN, parseInt(fromParam)) : YEAR_MIN;
+  const toYear = toParam ? Math.min(YEAR_MAX, parseInt(toParam)) : YEAR_MAX;
 
   const isArtistMode = mode === "artists";
   const isCountry = /^[A-Z]{2}$/.test(slug);
@@ -74,6 +77,8 @@ export default async function LocationPage({
 
   const countryParam = isCountry ? "&country=1" : "";
   const encodedSlug = encodeURIComponent(slug);
+  const isDateFiltered = fromYear !== YEAR_MIN || toYear !== YEAR_MAX;
+  const yearSuffix = isDateFiltered ? `&from=${fromYear}&to=${toYear}` : "";
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -104,7 +109,7 @@ export default async function LocationPage({
         </section>
       )}
 
-      <ModeToggle slug={slug} mode={isArtistMode ? "artists" : "albums"} />
+      <ModeToggle slug={slug} mode={isArtistMode ? "artists" : "albums"} yearSuffix={yearSuffix} />
 
       {isArtistMode ? (
         <LazyLocationArtistCarousel
@@ -117,6 +122,8 @@ export default async function LocationPage({
           countryParam={countryParam}
           isLoggedIn={isLoggedIn}
           displayName={displayName}
+          fromYear={fromYear}
+          toYear={toYear}
         />
       )}
     </div>

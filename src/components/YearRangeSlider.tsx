@@ -11,9 +11,11 @@ const RANGE = YEAR_MAX - YEAR_MIN;
 export function YearRangeSlider({
   initialFrom = YEAR_MIN,
   initialTo = YEAR_MAX,
+  basePath = "/",
 }: {
   initialFrom?: number;
   initialTo?: number;
+  basePath?: string;
 }) {
   const router = useRouter();
   const [from, setFrom] = useState(initialFrom);
@@ -40,9 +42,10 @@ export function YearRangeSlider({
 
   const commit = (f: number, t: number) => {
     if (f === YEAR_MIN && t === YEAR_MAX) {
-      router.push("/");
+      router.push(basePath);
     } else {
-      router.push(`/?from=${f}&to=${t}`);
+      const sep = basePath.includes("?") ? "&" : "?";
+      router.push(`${basePath}${sep}from=${f}&to=${t}`);
     }
   };
 
@@ -78,7 +81,7 @@ export function YearRangeSlider({
     setTo(YEAR_MAX);
     fromRef.current = YEAR_MIN;
     toRef.current = YEAR_MAX;
-    router.push("/");
+    router.push(basePath);
   };
 
   const fromPct = pct(from);
