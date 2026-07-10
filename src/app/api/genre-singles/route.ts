@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   await Promise.all(
     singles.map(async (s) => {
       const artist = (s as MBAlbum)["artist-credit"]?.[0]?.artist?.name ?? "";
-      const url = await resolveAlbumArtwork(s.title, artist);
+      const url = await resolveAlbumArtwork(s.title, artist, s.id);
       if (url) s.coverUrl = url;
     })
   );

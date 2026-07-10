@@ -170,7 +170,7 @@ export default async function DecadePage({
   await Promise.all(
     unique.map(async (album) => {
       const artist = (album as MBAlbum)["artist-credit"]?.[0]?.artist?.name ?? "";
-      const url = await resolveAlbumArtwork(album.title, artist);
+      const url = await resolveAlbumArtwork(album.title, artist, album.id);
       if (url) album.coverUrl = url;
     })
   );

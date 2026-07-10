@@ -16,25 +16,47 @@ function remember(key: string, promise: Promise<string | null>): Promise<string 
     .finally(() => inFlight.delete(key));
 }
 
-export async function resolveAlbumArtwork(title: string, artist: string): Promise<string | null> {
+export async function resolveAlbumArtwork(title: string, artist: string, mbid?: string): Promise<string | null> {
   const key = `album:${title.toLowerCase().trim()}|${artist.toLowerCase().trim()}`;
   if (cache.has(key)) return cache.get(key) ?? null;
   if (inFlight.has(key)) return inFlight.get(key)!;
 
   return remember(key, (async () => {
+    // Try iTunes first
     const q = encodeURIComponent(`${title} ${artist}`);
     const res = await fetch(
       `https://itunes.apple.com/search?term=${q}&entity=album&limit=5`,
       { headers: { "User-Agent": BROWSER_UA }, signal: AbortSignal.timeout(8000) }
     );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const tl = title.toLowerCase();
-    const match =
-      data.results?.find((r: { collectionName?: string }) =>
-        r.collectionName?.toLowerCase().includes(tl)
-      ) ?? data.results?.[0];
-    return (match?.artworkUrl100 as string | undefined)?.replace("100x100bb", "600x600bb") ?? null;
+    if (res.ok) {
+      const data = await res.json();
+      const tl = title.toLowerCase();
+      const match =
+        data.results?.find((r: { collectionName?: string }) =>
+          r.collectionName?.toLowerCase().includes(tl)
+        ) ?? data.results?.[0];
+      const url = (match?.artworkUrl100 as string | undefined)?.replace("100x100bb", "600x600bb");
+      if (url) return url;
+    }
+
+    // Fall back to Cover Art Archive API when iTunes has nothing
+    if (mbid) {
+      try {
+        const caaRes = await fetch(
+          `https://coverartarchive.org/release/${mbid}`,
+          { headers: { "User-Agent": BROWSER_UA }, signal: AbortSignal.timeout(5000) }
+        );
+        if (caaRes.ok) {
+          const caaData = await caaRes.json();
+          const front = caaData.images?.find((img: { front?: boolean; image?: string }) => img.front) ?? caaData.images?.[0];
+          if (front?.image) return front.image as string;
+        }
+      } catch {
+        // CAA also unavailable — return null
+      }
+    }
+
+    return null;
   })());
 }
 

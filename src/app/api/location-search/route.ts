@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     }),
     ...albums.map(async (album) => {
       const artist = album["artist-credit"]?.[0]?.artist?.name ?? "";
-      const url = await resolveAlbumArtwork(album.title, artist);
+      const url = await resolveAlbumArtwork(album.title, artist, album.id);
       if (url) album.coverUrl = url;
     }),
   ]);
