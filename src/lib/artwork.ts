@@ -60,23 +60,4 @@ export async function resolveAlbumArtwork(title: string, artist: string, mbid?: 
   })());
 }
 
-export async function resolveArtistArtwork(artist: string): Promise<string | null> {
-  const key = `artist:${artist.toLowerCase().trim()}`;
-  if (cache.has(key)) return cache.get(key) ?? null;
-  if (inFlight.has(key)) return inFlight.get(key)!;
-
-  return remember(key, (async () => {
-    const q = encodeURIComponent(artist);
-    const res = await fetch(
-      `https://itunes.apple.com/search?term=${q}&entity=album&attribute=artistTerm&limit=3`,
-      { headers: { "User-Agent": BROWSER_UA }, signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const match =
-      data.results?.find((r: { artistName?: string }) =>
-        r.artistName?.toLowerCase() === artist.toLowerCase()
-      ) ?? data.results?.[0];
-    return (match?.artworkUrl100 as string | undefined)?.replace("100x100bb", "600x600bb") ?? null;
-  })());
-}
+// resolveArtistArtwork() was removed with the artist pages — see ARCHIVE.md section 4.

@@ -3,22 +3,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { removeFromLibrary } from "@/app/actions";
+import { LibraryItemCard, type LibraryEntry } from "@/components/LibraryItemCard";
 
-export type LibraryEntry = {
-  id: string;
-  mbid: string;
-  albumTitle: string;
-  artistName: string;
-  artistMbid: string | null;
-  releaseYear: number | null;
-  status: string;
-  rating: number | null;
-  coverUrl: string | null;
-  addedAt: Date;
-};
+export type { LibraryEntry };
 
 type Filter = "ALL" | "LISTENED" | "LISTENING" | "WANT";
-type Sort = "added_desc" | "added_asc" | "rating_desc" | "rating_asc";
+type TypeFilter = "ALL" | "ALBUM" | "SONG";
+type Sort = "added_desc" | "added_asc" | "rating_desc" | "rating_asc" | "title_asc";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "ALL", label: "All" },
@@ -27,147 +18,77 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "WANT", label: "Want to Listen" },
 ];
 
-const SORT_OPTIONS: { value: Sort; label: string; forFilters: Filter[] }[] = [
-  { value: "added_desc", label: "Recently Added", forFilters: ["ALL", "LISTENED", "LISTENING", "WANT"] },
-  { value: "added_asc", label: "Oldest First", forFilters: ["ALL", "LISTENED", "LISTENING", "WANT"] },
-  { value: "rating_desc", label: "Highest Rated", forFilters: ["LISTENED"] },
-  { value: "rating_asc", label: "Lowest Rated", forFilters: ["LISTENED"] },
+const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
+  { key: "ALL", label: "Everything" },
+  { key: "ALBUM", label: "Albums" },
+  { key: "SONG", label: "Songs" },
+];
+
+const SORT_OPTIONS: { value: Sort; label: string }[] = [
+  { value: "added_desc", label: "Recently Added" },
+  { value: "added_asc", label: "Oldest First" },
+  { value: "rating_desc", label: "Highest Rated" },
+  { value: "rating_asc", label: "Lowest Rated" },
+  { value: "title_asc", label: "Title A–Z" },
 ];
 
 function sortEntries(entries: LibraryEntry[], sort: Sort): LibraryEntry[] {
   return [...entries].sort((a, b) => {
-    if (sort === "added_desc") return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
-    if (sort === "added_asc") return new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
-    if (sort === "rating_desc") return (b.rating ?? -1) - (a.rating ?? -1);
-    if (sort === "rating_asc") return (a.rating ?? 11) - (b.rating ?? 11);
-    return 0;
+    switch (sort) {
+      case "added_desc": return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
+      case "added_asc":  return new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
+      // Unrated entries sort last either way.
+      case "rating_desc": return (b.rating ?? -1) - (a.rating ?? -1);
+      case "rating_asc":  return (a.rating ?? 11) - (b.rating ?? 11);
+      case "title_asc":   return a.albumTitle.localeCompare(b.albumTitle);
+    }
   });
-}
-
-function RatingBadge({ rating }: { rating: number | null }) {
-  if (rating == null) return null;
-  return (
-    <div className="mt-1.5 flex items-baseline gap-0.5">
-      <span className="text-sm font-bold text-zinc-100 tabular-nums leading-none">
-        {rating.toFixed(1)}
-      </span>
-      <span className="text-xs text-zinc-600 leading-none">/10</span>
-    </div>
-  );
-}
-
-function GridCard({
-  entry,
-  onRemove,
-}: {
-  entry: LibraryEntry;
-  onRemove: (mbid: string) => void;
-}) {
-  return (
-    <div className="group relative">
-      <Link href={`/album/${entry.mbid}`} className="block">
-        <div className="aspect-square rounded-lg overflow-hidden bg-zinc-800 mb-2 group-hover:opacity-80 transition-opacity">
-          {entry.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={entry.coverUrl}
-              alt={entry.albumTitle}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center p-3">
-              <span className="text-zinc-600 text-xs text-center leading-snug line-clamp-3">
-                {entry.albumTitle}
-              </span>
-            </div>
-          )}
-        </div>
-        <p className="text-xs font-medium text-zinc-200 line-clamp-1">{entry.albumTitle}</p>
-      </Link>
-      {entry.artistMbid ? (
-        <Link
-          href={`/artist/${entry.artistMbid}`}
-          className="text-xs text-zinc-500 truncate block hover:text-zinc-300 transition-colors"
-        >
-          {entry.artistName}
-        </Link>
-      ) : (
-        <p className="text-xs text-zinc-500 truncate">{entry.artistName}</p>
-      )}
-      <RatingBadge rating={entry.rating} />
-      {entry.rating == null && (
-        <p className="text-xs text-zinc-700 mt-1.5">Not rated</p>
-      )}
-      <button
-        onClick={() => onRemove(entry.mbid)}
-        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900/80 rounded px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
-      >
-        ✕
-      </button>
-    </div>
-  );
 }
 
 export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [sort, setSort] = useState<Sort>("added_desc");
   const [localEntries, setLocalEntries] = useState(entries);
   const [, startTransition] = useTransition();
 
   const handleRemove = (mbid: string) => {
     setLocalEntries((prev) => prev.filter((e) => e.mbid !== mbid));
-    startTransition(async () => {
-      await removeFromLibrary(mbid);
-    });
+    startTransition(async () => { await removeFromLibrary(mbid); });
   };
-
-  const handleFilterChange = (f: Filter) => {
-    setFilter(f);
-    // Reset to a valid sort for the new filter
-    const validSorts = SORT_OPTIONS.filter((s) => s.forFilters.includes(f));
-    if (!validSorts.find((s) => s.value === sort)) {
-      setSort("added_desc");
-    }
-  };
-
-  const filtered =
-    filter === "ALL"
-      ? localEntries
-      : localEntries.filter((e) => e.status === filter);
-
-  const sorted = sortEntries(filtered, sort);
-
-  const availableSorts = SORT_OPTIONS.filter((s) => s.forFilters.includes(filter));
 
   if (localEntries.length === 0) {
     return (
-      <p className="text-zinc-600 text-sm">
+      <p className="text-zinc-500 text-sm">
         Your library is empty.{" "}
-        <a
-          href="/"
-          className="text-zinc-400 hover:text-zinc-200 underline underline-offset-2"
-        >
-          Discover albums
-        </a>{" "}
-        to get started.
+        <Link href="/" className="text-zinc-300 hover:text-zinc-100 underline underline-offset-2">
+          Search for something
+        </Link>{" "}
+        to add your first album or song.
       </p>
     );
   }
 
+  const byType =
+    typeFilter === "ALL"
+      ? localEntries
+      : localEntries.filter((e) => e.itemType === typeFilter);
+
+  const filtered = filter === "ALL" ? byType : byType.filter((e) => e.status === filter);
+  const sorted = sortEntries(filtered, sort);
+
   return (
     <div>
-      {/* Filter tabs + sort */}
-      <div className="flex items-end justify-between mb-8 border-b border-zinc-800 pb-0">
+      {/* Status tabs + sort */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-5 border-b border-zinc-800">
         <div className="flex gap-1">
           {FILTERS.map(({ key, label }) => {
             const count =
-              key === "ALL"
-                ? localEntries.length
-                : localEntries.filter((e) => e.status === key).length;
+              key === "ALL" ? byType.length : byType.filter((e) => e.status === key).length;
             return (
               <button
                 key={key}
-                onClick={() => handleFilterChange(key)}
+                onClick={() => setFilter(key)}
                 className={`px-3 py-2 text-xs transition-colors border-b-2 -mb-px ${
                   filter === key
                     ? "border-zinc-300 text-zinc-100"
@@ -175,11 +96,7 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
                 }`}
               >
                 {label}
-                <span
-                  className={`ml-1.5 tabular-nums ${
-                    filter === key ? "text-zinc-400" : "text-zinc-700"
-                  }`}
-                >
+                <span className={`ml-1.5 tabular-nums ${filter === key ? "text-zinc-400" : "text-zinc-700"}`}>
                   {count}
                 </span>
               </button>
@@ -187,31 +104,36 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
           })}
         </div>
 
-        {/* Sort dropdown */}
-        {availableSorts.length > 1 && (
-          <div className="flex items-center gap-2 pb-2">
-            <span className="text-[10px] text-zinc-700 uppercase tracking-widest">Sort</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as Sort)}
-              className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-400 focus:outline-none"
-            >
-              {availableSorts.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="flex items-center gap-2 pb-2">
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+            aria-label="Filter by type"
+            className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-400 focus:outline-none"
+          >
+            {TYPE_FILTERS.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            aria-label="Sort by"
+            className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-400 focus:outline-none"
+          >
+            {SORT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {sorted.length === 0 ? (
-        <p className="text-zinc-600 text-sm">Nothing here yet.</p>
+        <p className="text-zinc-600 text-sm py-8">Nothing here yet.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
           {sorted.map((entry) => (
-            <GridCard key={entry.id} entry={entry} onRemove={handleRemove} />
+            <LibraryItemCard key={entry.id} entry={entry} onRemove={handleRemove} />
           ))}
         </div>
       )}

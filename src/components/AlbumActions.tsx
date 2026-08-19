@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addAlbumToLibrary, rateAlbumAction, removeFromLibrary } from "@/app/actions";
+import Link from "next/link";
+import { saveToLibrary, rateItem, removeFromLibrary, type LibraryItemInput } from "@/app/actions";
 
-// "Listened" is not in the list — rating auto-sets that status
 const STATUSES = [
+  ["LISTENED", "Listened"],
   ["LISTENING", "Listening now"],
   ["WANT", "Want to listen"],
 ] as const;
@@ -15,6 +16,7 @@ interface Props {
   artistName: string;
   releaseYear?: number;
   coverUrl?: string;
+  artistMbid?: string;
   isLoggedIn: boolean;
   initialStatus: string | null;
   initialRating: number | null;
@@ -26,53 +28,60 @@ export function AlbumActions({
   artistName,
   releaseYear,
   coverUrl,
+  artistMbid,
   isLoggedIn,
   initialStatus,
   initialRating,
 }: Props) {
   const [status, setStatus] = useState<string | null>(initialStatus);
-  const [rating, setRating] = useState(initialRating ?? 5.0);
+  const [rating, setRating] = useState(initialRating ?? 7.0);
   const [isPending, startTransition] = useTransition();
 
   if (!isLoggedIn) {
     return (
-      <a href="/login" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+      <Link
+        href="/login"
+        className="inline-block px-4 py-2 text-sm bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors"
+      >
         Sign in to add to library
-      </a>
+      </Link>
     );
   }
 
+  const item: LibraryItemInput = {
+    mbid,
+    itemType: "ALBUM",
+    title: albumTitle,
+    artistName,
+    releaseYear,
+    coverUrl,
+    artistMbid,
+  };
+
   const handleStatus = (newStatus: string) => {
-    startTransition(async () => {
-      await addAlbumToLibrary(mbid, albumTitle, artistName, newStatus, releaseYear, coverUrl);
-    });
     setStatus(newStatus);
+    startTransition(async () => { await saveToLibrary(item, newStatus); });
   };
 
   const handleRate = () => {
-    startTransition(async () => {
-      await rateAlbumAction(mbid, albumTitle, artistName, rating, releaseYear, coverUrl);
-    });
     setStatus("LISTENED");
+    startTransition(async () => { await rateItem(item, rating); });
   };
 
   const handleRemove = () => {
-    startTransition(async () => {
-      await removeFromLibrary(mbid);
-    });
     setStatus(null);
+    startTransition(async () => { await removeFromLibrary(mbid); });
   };
 
   return (
     <div>
-      {/* Status buttons — no Listened (rating handles that) */}
-      <div className="flex flex-col gap-1.5 mb-5">
+      <div className="flex flex-wrap gap-1.5 mb-5">
         {STATUSES.map(([s, label]) => (
           <button
             key={s}
             onClick={() => handleStatus(s)}
             disabled={isPending}
-            className={`px-3 py-2 text-sm rounded text-left transition-colors disabled:opacity-40 ${
+            className={`px-3 py-2 text-sm rounded transition-colors disabled:opacity-40 ${
               status === s
                 ? "bg-zinc-600 text-zinc-100"
                 : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -81,27 +90,12 @@ export function AlbumActions({
             {label}
           </button>
         ))}
-        {/* Show Listened as read-only if set via rating */}
-        {status === "LISTENED" && (
-          <div className="px-3 py-2 text-sm rounded bg-zinc-600 text-zinc-100">
-            Listened ✓
-          </div>
-        )}
-        {status && (
-          <button
-            onClick={handleRemove}
-            disabled={isPending}
-            className="text-xs text-zinc-700 hover:text-zinc-500 text-left mt-0.5 transition-colors"
-          >
-            Remove from library
-          </button>
-        )}
       </div>
 
-      {/* Rating — saving auto-marks as Listened */}
+      {/* Saving a rating implies you listened to it. */}
       <div className="border-t border-zinc-800 pt-4">
         <div className="flex items-baseline justify-between mb-2">
-          <span className="text-xs text-zinc-500 uppercase tracking-widest">Rating</span>
+          <span className="text-xs text-zinc-500 uppercase tracking-widest">Your rating</span>
           <span className="text-sm font-semibold text-zinc-200 tabular-nums">
             {rating.toFixed(1)}
             <span className="text-zinc-600 text-xs font-normal"> /10</span>
@@ -111,18 +105,29 @@ export function AlbumActions({
           type="range"
           min="0"
           max="10"
-          step="0.1"
+          step="0.5"
           value={rating}
           onChange={(e) => setRating(parseFloat(e.target.value))}
-          className="w-full accent-zinc-400 cursor-pointer"
+          className="w-full accent-zinc-300 cursor-pointer"
         />
-        <button
-          onClick={handleRate}
-          disabled={isPending}
-          className="mt-2.5 text-xs px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-300 transition-colors disabled:opacity-40"
-        >
-          {isPending ? "Saving…" : "Save rating → Listened"}
-        </button>
+        <div className="flex items-center gap-3 mt-2.5">
+          <button
+            onClick={handleRate}
+            disabled={isPending}
+            className="text-xs px-3 py-1.5 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
+          >
+            {isPending ? "Saving…" : initialRating != null ? "Update rating" : "Save rating"}
+          </button>
+          {status && (
+            <button
+              onClick={handleRemove}
+              disabled={isPending}
+              className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+            >
+              Remove from library
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -3,8 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Supabase: pooled connection (port 6543) for the app,
+  // direct connection (port 5432) for migrations.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -18,11 +21,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts       Account[]
-  sessions       Session[]
-  logs           AlbumLog[]
-  reviews        Review[]
-  favoriteGenres FavoriteGenre[]
+  accounts Account[]
+  sessions Session[]
+  logs     AlbumLog[]
+  reviews  Review[]
 }
 
 model Account {
@@ -30,12 +32,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String?
-  access_token      String?
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String?
+  id_token          String? @db.Text
   session_state     String?
 
   createdAt DateTime @default(now())
@@ -64,17 +66,20 @@ model VerificationToken {
   @@id([identifier, token])
 }
 
+/// One row per album or song a user has added to their library.
 model AlbumLog {
   id          String   @id @default(cuid())
   userId      String
-  mbid        String   // MusicBrainz release ID
-  albumTitle  String
+  mbid        String // MusicBrainz release id (albums) or recording id (songs)
+  itemType    String   @default("ALBUM") // ALBUM | SONG
+  albumTitle  String // the album title, or the song title for songs
   artistName  String
+  parentAlbum String? // songs only: the album the song appears on
   releaseYear Int?
   coverUrl    String?
   artistMbid  String?
   status      String   @default("LISTENED") // LISTENED | LISTENING | WANT
-  rating      Float?   // 1.0 – 10.0
+  rating      Float? // 1.0 – 10.0
   addedAt     DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -82,23 +87,15 @@ model AlbumLog {
   reviews Review[]
 
   @@unique([userId, mbid])
+  @@index([userId, addedAt])
 }
 
-model FavoriteGenre {
-  id     String @id @default(cuid())
-  userId String
-  tag    String
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, tag])
-}
-
+/// Written reviews. No UI yet — see ARCHIVE.md section 10.
 model Review {
   id         String   @id @default(cuid())
   userId     String
   albumLogId String
-  body       String
+  body       String   @db.Text
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

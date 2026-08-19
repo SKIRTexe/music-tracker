@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { LibraryView } from "@/components/LibraryView";
 
+export const dynamic = "force-dynamic";
+
 export default async function LibraryPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -13,9 +15,10 @@ export default async function LibraryPage() {
     select: {
       id: true,
       mbid: true,
+      itemType: true,
       albumTitle: true,
       artistName: true,
-      artistMbid: true,
+      parentAlbum: true,
       releaseYear: true,
       status: true,
       rating: true,
@@ -24,9 +27,21 @@ export default async function LibraryPage() {
     },
   });
 
+  const rated = entries.filter((e) => e.rating != null);
+  const average =
+    rated.length > 0
+      ? (rated.reduce((sum, e) => sum + (e.rating ?? 0), 0) / rated.length).toFixed(1)
+      : null;
+
   return (
-    <div className="max-w-5xl mx-auto">
-      <h1 className="text-lg font-medium text-zinc-300 mb-8">My Library</h1>
+    <div>
+      <div className="flex items-baseline gap-4 mb-8">
+        <h1 className="text-lg font-medium text-zinc-200">My Library</h1>
+        <p className="text-xs text-zinc-600">
+          {entries.length} item{entries.length === 1 ? "" : "s"}
+          {average && <> · {average} average rating</>}
+        </p>
+      </div>
       <LibraryView entries={entries} />
     </div>
   );

@@ -5,127 +5,94 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-export async function addToLibrary(formData: FormData) {
+/** Everything needed to create a library row for an album or a song. */
+export type LibraryItemInput = {
+  mbid: string;
+  itemType: "ALBUM" | "SONG";
+  title: string;
+  artistName: string;
+  parentAlbum?: string;
+  releaseYear?: number;
+  coverUrl?: string;
+  artistMbid?: string;
+};
+
+async function requireUserId(): Promise<string> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
-
-  const mbid = formData.get("mbid") as string;
-  const albumTitle = formData.get("albumTitle") as string;
-  const artistName = formData.get("artistName") as string;
-  const status = formData.get("status") as string;
-  const releaseYearStr = formData.get("releaseYear") as string | null;
-  const releaseYear = releaseYearStr ? parseInt(releaseYearStr) : null;
-
-  await prisma.albumLog.upsert({
-    where: { userId_mbid: { userId: session.user.id, mbid } },
-    create: { userId: session.user.id, mbid, albumTitle, artistName, status, releaseYear },
-    update: { status },
-  });
-
-  revalidatePath("/library");
+  return session.user.id;
 }
 
-export async function updateStatus(mbid: string, status: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-
-  await prisma.albumLog.update({
-    where: { userId_mbid: { userId: session.user.id, mbid } },
-    data: { status },
-  });
-
+function refresh() {
   revalidatePath("/library");
+  revalidatePath("/");
 }
 
-export async function addAlbumToLibrary(
-  mbid: string,
-  albumTitle: string,
-  artistName: string,
-  status: string,
-  releaseYear?: number,
-  coverUrl?: string,
-  artistMbid?: string
-) {
-  const session = await auth();
-  if (!session?.user?.id) return;
+/** Add an item to the library, or move an existing one to a new status. */
+export async function saveToLibrary(item: LibraryItemInput, status: string) {
+  const userId = await requireUserId();
 
   await prisma.albumLog.upsert({
-    where: { userId_mbid: { userId: session.user.id, mbid } },
+    where: { userId_mbid: { userId, mbid: item.mbid } },
     create: {
-      userId: session.user.id,
-      mbid,
-      albumTitle,
-      artistName,
+      userId,
+      mbid: item.mbid,
+      itemType: item.itemType,
+      albumTitle: item.title,
+      artistName: item.artistName,
+      parentAlbum: item.parentAlbum ?? null,
       status,
-      releaseYear: releaseYear ?? null,
-      coverUrl: coverUrl ?? null,
-      artistMbid: artistMbid ?? null,
+      releaseYear: item.releaseYear ?? null,
+      coverUrl: item.coverUrl ?? null,
+      artistMbid: item.artistMbid ?? null,
     },
-    update: { status, coverUrl: coverUrl ?? undefined, artistMbid: artistMbid ?? undefined },
+    update: {
+      status,
+      coverUrl: item.coverUrl ?? undefined,
+      artistMbid: item.artistMbid ?? undefined,
+    },
   });
 
-  revalidatePath("/library");
+  refresh();
 }
 
-export async function rateAlbumAction(
-  mbid: string,
-  albumTitle: string,
-  artistName: string,
-  rating: number,
-  releaseYear?: number,
-  coverUrl?: string,
-  artistMbid?: string
-) {
-  const session = await auth();
-  if (!session?.user?.id) return;
+/** Rate an item 0–10. Rating something implies you listened to it. */
+export async function rateItem(item: LibraryItemInput, rating: number) {
+  const userId = await requireUserId();
+  const clamped = Math.min(10, Math.max(0, rating));
 
   await prisma.albumLog.upsert({
-    where: { userId_mbid: { userId: session.user.id, mbid } },
+    where: { userId_mbid: { userId, mbid: item.mbid } },
     create: {
-      userId: session.user.id,
-      mbid,
-      albumTitle,
-      artistName,
+      userId,
+      mbid: item.mbid,
+      itemType: item.itemType,
+      albumTitle: item.title,
+      artistName: item.artistName,
+      parentAlbum: item.parentAlbum ?? null,
       status: "LISTENED",
-      rating,
-      releaseYear: releaseYear ?? null,
-      coverUrl: coverUrl ?? null,
-      artistMbid: artistMbid ?? null,
+      rating: clamped,
+      releaseYear: item.releaseYear ?? null,
+      coverUrl: item.coverUrl ?? null,
+      artistMbid: item.artistMbid ?? null,
     },
-    update: { rating, status: "LISTENED", coverUrl: coverUrl ?? undefined, artistMbid: artistMbid ?? undefined },
+    update: {
+      rating: clamped,
+      status: "LISTENED",
+      coverUrl: item.coverUrl ?? undefined,
+      artistMbid: item.artistMbid ?? undefined,
+    },
   });
 
-  revalidatePath("/library");
+  refresh();
 }
 
 export async function removeFromLibrary(mbid: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const userId = await requireUserId();
 
-  await prisma.albumLog.delete({
-    where: { userId_mbid: { userId: session.user.id, mbid } },
+  await prisma.albumLog.deleteMany({
+    where: { userId, mbid },
   });
 
-  revalidatePath("/library");
-}
-
-export async function toggleFavoriteGenre(tag: string) {
-  const session = await auth();
-  if (!session?.user?.id) return;
-
-  const existing = await prisma.favoriteGenre.findUnique({
-    where: { userId_tag: { userId: session.user.id, tag } },
-  });
-
-  if (existing) {
-    await prisma.favoriteGenre.delete({
-      where: { userId_tag: { userId: session.user.id, tag } },
-    });
-  } else {
-    await prisma.favoriteGenre.create({
-      data: { userId: session.user.id, tag },
-    });
-  }
-
-  revalidatePath("/");
+  refresh();
 }
