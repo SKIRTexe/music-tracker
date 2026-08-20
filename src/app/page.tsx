@@ -1,16 +1,19 @@
 import { search, type SearchItem } from "@/lib/search";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ResultCard, type ExistingEntry } from "@/components/ResultCard";
+import { getExistingEntries, type ExistingEntry } from "@/lib/library";
+import { ResultCard } from "@/components/ResultCard";
+import { ArtistCard } from "@/components/ArtistCard";
 import { LibraryItemCard } from "@/components/LibraryItemCard";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-type SearchType = "all" | "albums" | "songs";
+type SearchType = "all" | "albums" | "songs" | "artists";
 
 const TYPE_TABS: { key: SearchType; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "artists", label: "Artists" },
   { key: "albums", label: "Albums" },
   { key: "songs", label: "Songs" },
 ];
@@ -40,22 +43,6 @@ function SearchBar({ defaultValue, type, big }: { defaultValue: string; type: Se
       </button>
     </form>
   );
-}
-
-/** Look up which of these results the user has already logged, so cards show state. */
-async function getExistingEntries(
-  userId: string | undefined,
-  items: SearchItem[]
-): Promise<Map<string, ExistingEntry>> {
-  const map = new Map<string, ExistingEntry>();
-  if (!userId || items.length === 0) return map;
-
-  const rows = await prisma.albumLog.findMany({
-    where: { userId, mbid: { in: items.map((i) => i.id) } },
-    select: { mbid: true, status: true, rating: true },
-  });
-  for (const row of rows) map.set(row.mbid, { status: row.status, rating: row.rating });
-  return map;
 }
 
 function ResultGrid({
@@ -88,7 +75,9 @@ export default async function HomePage({
 }) {
   const { q, type: typeParam } = await searchParams;
   const type: SearchType =
-    typeParam === "albums" || typeParam === "songs" ? typeParam : "all";
+    typeParam === "albums" || typeParam === "songs" || typeParam === "artists"
+      ? typeParam
+      : "all";
   const query = q?.trim() ?? "";
 
   const session = await auth();
@@ -96,14 +85,18 @@ export default async function HomePage({
 
   // ── Search results ─────────────────────────────────────────────────────────
   if (query) {
-    const { albums, songs } = await search(query, {
-      albums: type !== "songs",
-      songs: type !== "albums",
+    const { albums, songs, artists } = await search(query, {
+      albums: type === "all" || type === "albums",
+      songs: type === "all" || type === "songs",
+      artists: type === "all" || type === "artists",
       limit: type === "all" ? 18 : 36,
     });
 
-    const existing = await getExistingEntries(session?.user?.id, [...albums, ...songs]);
-    const total = albums.length + songs.length;
+    const existing = await getExistingEntries(
+      session?.user?.id,
+      [...albums, ...songs].map((i) => i.id)
+    );
+    const total = albums.length + songs.length + artists.length;
 
     return (
       <div>
@@ -139,6 +132,19 @@ export default async function HomePage({
             <p className="text-xs text-zinc-600 mb-6">
               {total} result{total === 1 ? "" : "s"} for &ldquo;{query}&rdquo;
             </p>
+
+            {artists.length > 0 && (
+              <section className="mb-10">
+                <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
+                  Artists
+                </h2>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-5">
+                  {artists.map((artist) => (
+                    <ArtistCard key={artist.id} artist={artist} />
+                  ))}
+                </div>
+              </section>
+            )}
 
             {albums.length > 0 && (
               <section className="mb-10">

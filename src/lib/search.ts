@@ -17,9 +17,21 @@ export interface SearchItem {
   parentAlbum?: string;
 }
 
+/** An artist (band or person) hit. */
+export interface ArtistItem {
+  id: string;
+  name: string;
+  /** MusicBrainz's own note disambiguating same-named artists, e.g. "UK punk band". */
+  disambiguation?: string;
+  /** "Group" or "Person" where MusicBrainz knows. */
+  kind?: string;
+  country?: string;
+}
+
 export interface SearchResults {
   albums: SearchItem[];
   songs: SearchItem[];
+  artists: ArtistItem[];
 }
 
 function normalize(s: string): string {
@@ -212,10 +224,54 @@ function isArtistLed(
   return exactTitleMatches === 0;
 }
 
+interface MBArtistHit {
+  id: string;
+  name: string;
+  score?: number;
+  disambiguation?: string;
+  type?: string;
+  country?: string;
+}
+
+/**
+ * Artists matching the query. Ranked by MusicBrainz's own score, with exact and
+ * prefix name matches pulled forward so "queen" leads with Queen.
+ */
+export async function searchArtists(query: string, limit = 18): Promise<ArtistItem[]> {
+  const term = luceneTerm(query);
+  if (!term) return [];
+
+  try {
+    const data = await mbFetch("/artist", { query: term, limit: "40" }, "high");
+    const artists = (data as { artists?: MBArtistHit[] }).artists ?? [];
+    const q = normalize(query);
+
+    return artists
+      .map((a) => {
+        const name = normalize(a.name);
+        let score = (a.score ?? 0) / 100;
+        if (name === q) score += 3;
+        else if (q.length >= 3 && name.startsWith(q)) score += 1.5;
+        else if (q.length >= 4 && name.includes(q)) score += 0.75;
+        return { a, score };
+      })
+      .sort((x, y) => y.score - x.score)
+      .slice(0, limit)
+      .map(({ a }) => ({
+        id: a.id,
+        name: a.name,
+        disambiguation: a.disambiguation,
+        kind: a.type,
+        country: a.country,
+      }));
+  } catch { return []; }
+}
+
 /** An artist's own albums, studio records first, then live/compilations. */
-async function artistDiscography(
+export async function artistDiscography(
   artist: { id: string; name: string },
-  limit: number
+  limit: number,
+  opts: { studioOnly?: boolean } = {}
 ): Promise<SearchItem[]> {
   try {
     const data = await mbFetch(
@@ -237,7 +293,12 @@ async function artistDiscography(
     const byYear = (a: { item: SearchItem }, b: { item: SearchItem }) =>
       (a.item.year ?? "9999").localeCompare(b.item.year ?? "9999");
 
-    return [...studio.sort(byYear), ...rest.sort(byYear)].map((m) => ({
+    // The artist page wants the real discography, not 90 live bootlegs after it.
+    const ordered = opts.studioOnly
+      ? studio.sort(byYear)
+      : [...studio.sort(byYear), ...rest.sort(byYear)];
+
+    return ordered.map((m) => ({
       ...m.item,
       artistName: m.item.artistName === "Unknown Artist" ? artist.name : m.item.artistName,
       artistMbid: m.item.artistMbid ?? artist.id,
@@ -334,15 +395,25 @@ function dedupe(items: SearchItem[], limit: number, maxPerTitle = 3): SearchItem
  */
 export async function search(
   query: string,
-  opts: { albums?: boolean; songs?: boolean; limit?: number } = {}
+  opts: { albums?: boolean; songs?: boolean; artists?: boolean; limit?: number } = {}
 ): Promise<SearchResults> {
-  const { albums: wantAlbums = true, songs: wantSongs = true, limit = 24 } = opts;
+  const {
+    albums: wantAlbums = true,
+    songs: wantSongs = true,
+    artists: wantArtists = true,
+    limit = 24,
+  } = opts;
   const term = luceneTerm(query);
-  if (!term) return { albums: [], songs: [] };
+  if (!term) return { albums: [], songs: [], artists: [] };
 
-  // Album text search doubles as artist detection, so it runs even for a songs-only
-  // search — unless there is nothing to detect from.
-  const groups = await albumTextSearch(term);
+  // Queued first so it runs alongside the album/song pipeline rather than after it.
+  const artistsPromise = wantArtists
+    ? searchArtists(query, limit)
+    : Promise.resolve([] as ArtistItem[]);
+
+  // The album text search doubles as artist detection, so it runs for a songs-only
+  // search too — but not when only artists were asked for.
+  const groups = wantAlbums || wantSongs ? await albumTextSearch(term) : [];
   const detected = detectArtist(query, groups);
 
   const normalizedQuery = normalize(query);
@@ -351,9 +422,10 @@ export async function search(
   ).length;
   const artist = isArtistLed(detected, exactTitleMatches) ? detected : null;
 
-  const [discography, recordings] = await Promise.all([
+  const [discography, recordings, artistResults] = await Promise.all([
     wantAlbums && artist ? artistDiscography(artist, 100) : Promise.resolve([]),
     wantSongs ? songSearch(term, artist?.id ?? null) : Promise.resolve([]),
+    artistsPromise,
   ]);
 
   let albums: SearchItem[] = [];
@@ -379,5 +451,6 @@ export async function search(
   return {
     albums,
     songs: wantSongs ? rankSongs(query, recordings, limit) : [],
+    artists: artistResults,
   };
 }

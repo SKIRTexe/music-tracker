@@ -11,7 +11,15 @@ const STATUS_LABELS: Record<string, string> = {
   WANT: "Want to listen",
 };
 
-export type ExistingEntry = { status: string; rating: number | null };
+// Hold a cover to open the rate popover without leaving the page. Matches the
+// original gesture: 550ms, cancelled if the pointer moves more than 8px (so
+// scrolling and dragging don't trigger it).
+const LONG_PRESS_MS = 550;
+const MOVE_TOLERANCE = 8;
+
+// Type-only import, so the server-side prisma module is never pulled into the bundle.
+import type { ExistingEntry } from "@/lib/library";
+export type { ExistingEntry };
 
 export function ResultCard({
   item,
@@ -35,20 +43,78 @@ export function ResultCard({
   const [isPending, startTransition] = useTransition();
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Close the popover on outside click or Escape.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
+  const didLongPress = useRef(false);
+  const pointerKind = useRef<string>("mouse");
+
+  // Close the popover on outside press or Escape. Listens for pointerdown rather
+  // than mousedown so a tap outside closes it on touch devices too.
   useEffect(() => {
     if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (!wrapRef.current?.contains(e.target as Node)) setMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
+
+  // Don't leave a timer running if the card unmounts mid-press.
+  useEffect(() => {
+    return () => {
+      if (pressTimer.current) clearTimeout(pressTimer.current);
+    };
+  }, []);
+
+  const clearPress = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+    pressOrigin.current = null;
+  };
+
+  const startPress = (e: React.PointerEvent) => {
+    pointerKind.current = e.pointerType;
+    // Reset before the guards below: on touch a completed long press doesn't
+    // always emit a click, and a stale flag would swallow the next tap.
+    didLongPress.current = false;
+    // Only the primary button arms the gesture — right-click should stay a
+    // right-click, and the popover has its own controls once open.
+    if (menuOpen || !isLoggedIn || e.button !== 0) return;
+    pressOrigin.current = { x: e.clientX, y: e.clientY };
+    pressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      pressOrigin.current = null;
+      setMenuOpen(true);
+    }, LONG_PRESS_MS);
+  };
+
+  const movePress = (e: React.PointerEvent) => {
+    const origin = pressOrigin.current;
+    if (!origin) return;
+    const moved =
+      Math.abs(e.clientX - origin.x) > MOVE_TOLERANCE ||
+      Math.abs(e.clientY - origin.y) > MOVE_TOLERANCE;
+    if (moved) clearPress();
+  };
+
+  // A completed long press must not also follow the link.
+  const suppressClickAfterPress = (e: React.MouseEvent) => {
+    if (didLongPress.current) {
+      e.preventDefault();
+      didLongPress.current = false;
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    // On touch, the native long-press menu would fight the gesture. On mouse,
+    // leave right-click alone so "open in new tab" still works.
+    if (pointerKind.current !== "mouse") e.preventDefault();
+  };
 
   const handleImageError = async () => {
     if (triedItunes) { setSrc(null); return; }
@@ -98,6 +164,7 @@ export function ResultCard({
           src={src}
           alt={item.title}
           loading="lazy"
+          draggable={false}
           onError={handleImageError}
           className="w-full h-full object-cover"
         />
@@ -113,13 +180,27 @@ export function ResultCard({
 
   return (
     <div ref={wrapRef} className="group relative">
-      {item.detailId ? (
-        <Link href={`/album/${item.detailId}`} className="block hover:opacity-80 transition-opacity">
-          {cover}
-        </Link>
-      ) : (
-        cover
-      )}
+      <div
+        onPointerDown={startPress}
+        onPointerMove={movePress}
+        onPointerUp={clearPress}
+        onPointerLeave={clearPress}
+        onPointerCancel={clearPress}
+        onContextMenu={handleContextMenu}
+        className="select-none"
+      >
+        {item.detailId ? (
+          <Link
+            href={`/album/${item.detailId}`}
+            onClick={suppressClickAfterPress}
+            className="block hover:opacity-80 transition-opacity"
+          >
+            {cover}
+          </Link>
+        ) : (
+          cover
+        )}
+      </div>
 
       {/* Add / rate trigger */}
       {isLoggedIn ? (

@@ -144,6 +144,48 @@ export interface MBTrack {
   length?: number;
 }
 
+export interface ArtistDetail {
+  id: string;
+  name: string;
+  disambiguation?: string;
+  kind?: string;
+  country?: string;
+  /** Formation/active years, where MusicBrainz has them. */
+  beganYear?: string;
+  endedYear?: string;
+  genres: MBGenre[];
+}
+
+/**
+ * Artist lookup. Uses `inc=genres` rather than tags — genres are MusicBrainz's
+ * curated list, so this avoids the demographic noise ("british", "male vocalist")
+ * that raw tags carry.
+ */
+export async function getArtistDetail(mbid: string): Promise<ArtistDetail> {
+  const data = (await mbFetch(`/artist/${mbid}`, { inc: "genres" })) as {
+    id: string;
+    name: string;
+    disambiguation?: string;
+    type?: string;
+    country?: string;
+    "life-span"?: { begin?: string; end?: string };
+    genres?: MBGenre[];
+  };
+
+  const span = data["life-span"];
+  return {
+    id: data.id,
+    name: data.name,
+    disambiguation: data.disambiguation || undefined,
+    kind: data.type,
+    country: data.country,
+    beganYear: span?.begin?.slice(0, 4),
+    endedYear: span?.end?.slice(0, 4),
+    // Most-used genres first.
+    genres: [...(data.genres ?? [])].sort((a, b) => (b.count ?? 0) - (a.count ?? 0)),
+  };
+}
+
 export interface AlbumDetail {
   id: string;
   title: string;
