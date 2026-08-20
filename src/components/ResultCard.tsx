@@ -1,15 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, useTransition } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { saveToLibrary, rateItem, type LibraryItemInput } from "@/app/actions";
+import { type LibraryItemInput } from "@/app/actions";
+import { RatePopover, STATUS_LABELS } from "@/components/RatePopover";
 import type { SearchItem } from "@/lib/search";
-
-const STATUS_LABELS: Record<string, string> = {
-  LISTENED: "Listened",
-  LISTENING: "Listening",
-  WANT: "Want to listen",
-};
 
 // Hold a cover to open the rate popover without leaving the page. Matches the
 // original gesture: 550ms, cancelled if the pointer moves more than 8px (so
@@ -39,8 +34,6 @@ export function ResultCard({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [saved, setSaved] = useState<ExistingEntry | null>(existing ?? null);
-  const [rating, setRating] = useState(existing?.rating ?? 7.0);
-  const [isPending, startTransition] = useTransition();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,18 +133,6 @@ export function ResultCard({
     artistMbid: item.artistMbid,
   });
 
-  const handleStatus = (status: string) => {
-    setSaved({ status, rating: saved?.rating ?? null });
-    setMenuOpen(false);
-    startTransition(async () => { await saveToLibrary(payload(), status); });
-  };
-
-  const handleRate = () => {
-    setSaved({ status: "LISTENED", rating });
-    setMenuOpen(false);
-    startTransition(async () => { await rateItem(payload(), rating); });
-  };
-
   const triggerClass = saved
     ? "bg-zinc-100 text-zinc-900"
     : "bg-zinc-950/80 text-zinc-200 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-800";
@@ -247,52 +228,14 @@ export function ResultCard({
         </div>
       </div>
 
-      {/* Popover */}
       {menuOpen && (
-        <div className="absolute z-30 top-9 right-1.5 w-44 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-3">
-          <div className="flex flex-col gap-1 mb-3">
-            {(["LISTENED", "LISTENING", "WANT"] as const).map((s) => (
-              <button
-                key={s}
-                disabled={isPending}
-                onClick={() => handleStatus(s)}
-                className={`w-full text-left text-[11px] px-2.5 py-1.5 rounded transition-colors disabled:opacity-40 ${
-                  saved?.status === s
-                    ? "bg-zinc-600 text-zinc-100"
-                    : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                }`}
-              >
-                {STATUS_LABELS[s]}
-              </button>
-            ))}
-          </div>
-
-          <div className="border-t border-zinc-800 pt-2.5">
-            <div className="flex items-baseline justify-between mb-1.5">
-              <span className="text-[11px] text-zinc-500">Rate</span>
-              <span className="text-xs font-semibold text-zinc-200 tabular-nums">
-                {rating.toFixed(1)}
-                <span className="text-zinc-600 font-normal">/10</span>
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="10"
-              step="0.5"
-              value={rating}
-              onChange={(e) => setRating(parseFloat(e.target.value))}
-              className="w-full accent-zinc-300 cursor-pointer"
-            />
-            <button
-              onClick={handleRate}
-              disabled={isPending}
-              className="mt-2 w-full text-[11px] py-1.5 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
-            >
-              {isPending ? "Saving…" : "Save rating"}
-            </button>
-          </div>
-        </div>
+        <RatePopover
+          item={payload()}
+          saved={saved}
+          onSaved={setSaved}
+          onClose={() => setMenuOpen(false)}
+          className="absolute top-9 right-1.5"
+        />
       )}
     </div>
   );

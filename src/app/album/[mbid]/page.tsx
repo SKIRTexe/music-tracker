@@ -2,7 +2,9 @@ import { getAlbumDetail, isNotFound } from "@/lib/musicbrainz";
 import { resolveAlbumArtwork } from "@/lib/artwork";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
 import { AlbumActions } from "@/components/AlbumActions";
+import { TrackRow } from "@/components/TrackRow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -51,11 +53,20 @@ export default async function AlbumPage({
   ]);
   const artworkUrl = itunesArt ?? album.coverArtUrl;
 
-  const userEntry = session?.user?.id
-    ? await prisma.albumLog.findUnique({
-        where: { userId_mbid: { userId: session.user.id, mbid: album.id } },
-      })
-    : null;
+  const [userEntry, trackEntries, savedSongs] = await Promise.all([
+    session?.user?.id
+      ? prisma.albumLog.findUnique({
+          where: { userId_mbid: { userId: session.user.id, mbid: album.id } },
+        })
+      : Promise.resolve(null),
+    getExistingEntries(
+      session?.user?.id,
+      album.tracks.map((t) => t.recordingId).filter((id): id is string => !!id)
+    ),
+    // Falls back to title+artist, since the same song may be saved under a
+    // different MusicBrainz recording id.
+    getSavedSongs(session?.user?.id),
+  ]);
 
   const totalMs = album.tracks.reduce((sum, t) => sum + (t.length ?? 0), 0);
 
@@ -124,27 +135,32 @@ export default async function AlbumPage({
 
       {album.tracks.length > 0 && (
         <section>
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
-            Tracklist
-          </h2>
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest">
+              Tracklist
+            </h2>
+            <p className="text-[10px] text-zinc-700">
+              {session?.user ? "Hover a track to rate it" : "Sign in to rate tracks"}
+            </p>
+          </div>
           <div>
             {album.tracks.map((track, i) => (
-              <div
+              <TrackRow
                 key={track.id ?? i}
-                className="flex items-center justify-between py-2.5 border-b border-zinc-800/50"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs text-zinc-700 w-5 text-right shrink-0 tabular-nums">
-                    {track.number ?? i + 1}
-                  </span>
-                  <span className="text-sm text-zinc-300 truncate">{track.title}</span>
-                </div>
-                {track.length && (
-                  <span className="text-xs text-zinc-600 shrink-0 ml-4 tabular-nums">
-                    {formatDuration(track.length)}
-                  </span>
-                )}
-              </div>
+                track={track}
+                index={i}
+                albumTitle={album.title}
+                artistName={album.artistName}
+                artistMbid={album.artistMbid}
+                releaseYear={album.year ? parseInt(album.year) : undefined}
+                coverUrl={artworkUrl ?? undefined}
+                isLoggedIn={!!session?.user}
+                existing={
+                  (track.recordingId && trackEntries.get(track.recordingId)) ||
+                  savedSongs.get(songKey(track.title, album.artistName)) ||
+                  null
+                }
+              />
             ))}
           </div>
         </section>

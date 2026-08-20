@@ -23,6 +23,32 @@ async function requireUserId(): Promise<string> {
   return session.user.id;
 }
 
+/**
+ * The row a song should write to, if one already exists under a different id.
+ *
+ * MusicBrainz has a separate recording per release, so the same studio song can
+ * carry many ids — song search and an album's tracklist routinely disagree about
+ * which one to use. Keying on id alone would put two "Karma Police" rows in the
+ * library, so a song already saved under any id is updated in place.
+ */
+async function findExistingSongId(
+  userId: string,
+  item: LibraryItemInput
+): Promise<string | null> {
+  if (item.itemType !== "SONG") return null;
+
+  const existing = await prisma.albumLog.findFirst({
+    where: {
+      userId,
+      itemType: "SONG",
+      albumTitle: item.title,
+      artistName: item.artistName,
+    },
+    select: { id: true },
+  });
+  return existing?.id ?? null;
+}
+
 function refresh() {
   revalidatePath("/library");
   revalidatePath("/");
@@ -31,6 +57,16 @@ function refresh() {
 /** Add an item to the library, or move an existing one to a new status. */
 export async function saveToLibrary(item: LibraryItemInput, status: string) {
   const userId = await requireUserId();
+
+  const existingSongId = await findExistingSongId(userId, item);
+  if (existingSongId) {
+    await prisma.albumLog.update({
+      where: { id: existingSongId },
+      data: { status, coverUrl: item.coverUrl ?? undefined },
+    });
+    refresh();
+    return;
+  }
 
   await prisma.albumLog.upsert({
     where: { userId_mbid: { userId, mbid: item.mbid } },
@@ -61,6 +97,16 @@ export async function rateItem(item: LibraryItemInput, rating: number) {
   const userId = await requireUserId();
   const clamped = Math.min(10, Math.max(0, rating));
 
+  const existingSongId = await findExistingSongId(userId, item);
+  if (existingSongId) {
+    await prisma.albumLog.update({
+      where: { id: existingSongId },
+      data: { rating: clamped, status: "LISTENED", coverUrl: item.coverUrl ?? undefined },
+    });
+    refresh();
+    return;
+  }
+
   await prisma.albumLog.upsert({
     where: { userId_mbid: { userId, mbid: item.mbid } },
     create: {
@@ -87,12 +133,29 @@ export async function rateItem(item: LibraryItemInput, rating: number) {
   refresh();
 }
 
-export async function removeFromLibrary(mbid: string) {
+/**
+ * Remove by id. For songs, also match on title+artist: the row may have been saved
+ * under one of MusicBrainz's other recording ids for the same song, in which case
+ * deleting by id alone would silently do nothing.
+ */
+export async function removeFromLibrary(
+  mbid: string,
+  song?: { title: string; artistName: string }
+) {
   const userId = await requireUserId();
 
-  await prisma.albumLog.deleteMany({
-    where: { userId, mbid },
-  });
+  const deleted = await prisma.albumLog.deleteMany({ where: { userId, mbid } });
+
+  if (deleted.count === 0 && song) {
+    await prisma.albumLog.deleteMany({
+      where: {
+        userId,
+        itemType: "SONG",
+        albumTitle: song.title,
+        artistName: song.artistName,
+      },
+    });
+  }
 
   refresh();
 }

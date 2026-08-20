@@ -138,10 +138,26 @@ export interface MBGenre {
 }
 
 export interface MBTrack {
+  /** Track id — unique to this pressing, so not usable as a library key. */
   id: string;
   number: string;
   title: string;
   length?: number;
+  /**
+   * The underlying recording id. This is what song search returns, so rating a
+   * track here and rating the same song from search hit the same library row
+   * rather than creating duplicates.
+   */
+  recordingId?: string;
+}
+
+/** Raw track as MusicBrainz returns it under `inc=recordings`. */
+interface MBTrackRaw {
+  id: string;
+  number: string;
+  title: string;
+  length?: number;
+  recording?: { id: string; title?: string; length?: number };
 }
 
 export interface ArtistDetail {
@@ -204,7 +220,7 @@ interface MBReleaseLike {
   status?: string;
   genres?: MBGenre[];
   "artist-credit"?: Array<{ artist: { id: string; name: string } }>;
-  media?: Array<{ tracks?: MBTrack[] }>;
+  media?: Array<{ tracks?: MBTrackRaw[] }>;
 }
 
 interface MBReleaseGroupDetail {
@@ -228,7 +244,16 @@ function pickRelease(releases: MBReleaseLike[]): MBReleaseLike | undefined {
 }
 
 function tracksOf(release: MBReleaseLike | undefined): MBTrack[] {
-  return release?.media?.flatMap((m) => m.tracks ?? []) ?? [];
+  const raw = release?.media?.flatMap((m) => m.tracks ?? []) ?? [];
+  return raw.map((t) => ({
+    id: t.id,
+    number: t.number,
+    // A track's title can differ from its recording's; the track title is what's
+    // printed on this release, so prefer it.
+    title: t.title || t.recording?.title || "",
+    length: t.length ?? t.recording?.length,
+    recordingId: t.recording?.id,
+  }));
 }
 
 /**

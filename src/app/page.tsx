@@ -1,7 +1,7 @@
 import { search, type SearchItem } from "@/lib/search";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getExistingEntries, type ExistingEntry } from "@/lib/library";
+import { getExistingEntries, getSavedSongs, songKey, type ExistingEntry } from "@/lib/library";
 import { ResultCard } from "@/components/ResultCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { LibraryItemCard } from "@/components/LibraryItemCard";
@@ -48,11 +48,11 @@ function SearchBar({ defaultValue, type, big }: { defaultValue: string; type: Se
 function ResultGrid({
   items,
   isLoggedIn,
-  existing,
+  entryFor,
 }: {
   items: SearchItem[];
   isLoggedIn: boolean;
-  existing: Map<string, ExistingEntry>;
+  entryFor: (item: SearchItem) => ExistingEntry | null;
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
@@ -61,7 +61,7 @@ function ResultGrid({
           key={item.id}
           item={item}
           isLoggedIn={isLoggedIn}
-          existing={existing.get(item.id) ?? null}
+          existing={entryFor(item)}
         />
       ))}
     </div>
@@ -92,10 +92,17 @@ export default async function HomePage({
       limit: type === "all" ? 18 : 36,
     });
 
-    const existing = await getExistingEntries(
-      session?.user?.id,
-      [...albums, ...songs].map((i) => i.id)
-    );
+    const [existing, savedSongs] = await Promise.all([
+      getExistingEntries(session?.user?.id, [...albums, ...songs].map((i) => i.id)),
+      // Songs may be saved under a different recording id for the same song.
+      getSavedSongs(session?.user?.id),
+    ]);
+    const entryFor = (item: SearchItem): ExistingEntry | null =>
+      existing.get(item.id) ??
+      (item.itemType === "SONG"
+        ? savedSongs.get(songKey(item.title, item.artistName)) ?? null
+        : null);
+
     const total = albums.length + songs.length + artists.length;
 
     return (
@@ -151,7 +158,7 @@ export default async function HomePage({
                 <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
                   Albums
                 </h2>
-                <ResultGrid items={albums} isLoggedIn={isLoggedIn} existing={existing} />
+                <ResultGrid items={albums} isLoggedIn={isLoggedIn} entryFor={entryFor} />
               </section>
             )}
 
@@ -160,7 +167,7 @@ export default async function HomePage({
                 <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
                   Songs
                 </h2>
-                <ResultGrid items={songs} isLoggedIn={isLoggedIn} existing={existing} />
+                <ResultGrid items={songs} isLoggedIn={isLoggedIn} entryFor={entryFor} />
               </section>
             )}
           </>
