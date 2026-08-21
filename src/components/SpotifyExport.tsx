@@ -57,12 +57,12 @@ export function SpotifyExport({
         <div className="flex items-center gap-3 justify-end">
           <button
             onClick={handleExport}
-            disabled={isPending || wantCount === 0}
+            // Never disabled on an empty list: syncing may still have tracks to
+            // clear out after everything moved to Listened.
+            disabled={isPending}
             className="text-xs px-3 py-2 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
           >
-            {isPending
-              ? "Exporting…"
-              : `Export ${wantCount} to Spotify`}
+            {isPending ? "Syncing…" : `Sync ${wantCount} to Spotify`}
           </button>
           <button
             onClick={() => startTransition(async () => { await disconnectSpotify(); })}

@@ -165,6 +165,18 @@ exist yet. A failed migration fails the build, which is the safe direction.
 Supabase free projects pause after ~7 days idle; the first request after that errors
 until it is resumed from the dashboard.
 
+## Spotify playlist sync
+
+The Want to Listen export is a two-way sync. `PlaylistTrack` records every track
+the app adds, so a sync can remove tracks whose library row left Want to Listen
+without touching tracks the user added to that playlist by hand — that distinction
+is the whole reason the table exists rather than diffing the playlist.
+
+A first sync **adopts** untracked tracks that a current Want to Listen item asks
+for, so playlists populated before tracking existed become manageable. Tracks from
+items that left Want to Listen *before* tracking existed stay orphaned and are never
+removed; they have to be deleted by hand.
+
 ## Spotify API limits that are not in the docs
 
 - `search` and `artists/{id}/albums` **cap `limit` at 10**. Asking for 11 returns

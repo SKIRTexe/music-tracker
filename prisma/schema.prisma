@@ -24,7 +24,8 @@ model User {
   /// Playlist synced by the Spotify export, so re-exporting updates it in place.
   spotifyPlaylistId String?
 
-  accounts Account[]
+  accounts       Account[]
+  playlistTracks PlaylistTrack[]
   sessions Session[]
   logs     AlbumLog[]
   reviews  Review[]
@@ -116,4 +117,22 @@ model MbCache {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+/// Tracks the Spotify export put into the playlist, so a sync can remove them when
+/// their library row leaves Want to Listen — without touching tracks the user added
+/// to that playlist by hand.
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  userId     String
+  playlistId String
+  trackUri   String
+  /// The library row (AlbumLog.mbid) this track came from.
+  sourceMbid String
+  addedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, playlistId, trackUri])
+  @@index([userId, sourceMbid])
 }

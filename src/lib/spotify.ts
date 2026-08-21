@@ -296,3 +296,18 @@ export async function addTracks(
     });
   }
 }
+
+/** Remove specific tracks from a playlist. */
+export async function removeTracks(
+  session: SpotifySession,
+  playlistId: string,
+  uris: string[]
+): Promise<void> {
+  // Same /items path as adding; the old /tracks route 403s. 100 per request.
+  for (let i = 0; i < uris.length; i += 100) {
+    await api(session, `/playlists/${playlistId}/items`, {
+      method: "DELETE",
+      body: JSON.stringify({ items: uris.slice(i, i + 100).map((uri) => ({ uri })) }),
+    });
+  }
+}
