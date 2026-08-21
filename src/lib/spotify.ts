@@ -290,9 +290,13 @@ export async function ensurePlaylist(
     }
   }
 
+  // Must be /me/playlists, not /users/{id}/playlists. Spotify now returns a bare
+  // 403 Forbidden for the user-scoped path — with either the legacy username from
+  // /me `id` or the newer `account_id` — even with playlist-modify-private granted
+  // and reads working fine.
   const created = await api<{ id: string; external_urls: { spotify: string } }>(
     session,
-    `/users/${session.spotifyUserId}/playlists`,
+    `/me/playlists`,
     {
       method: "POST",
       body: JSON.stringify({
