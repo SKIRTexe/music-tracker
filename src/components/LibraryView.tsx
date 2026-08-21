@@ -79,8 +79,55 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
 
   return (
     <div>
-      {/* Status tabs + sort */}
-      <div className="flex flex-wrap items-end justify-between gap-2 mb-5 border-b border-zinc-800">
+      {/*
+        Status is a native select on phones and a tab bar from sm up. The four tab
+        labels come to roughly 400px of text, which is wider than an iPhone's usable
+        width, so the last one sat off-screen behind a horizontal scroll that iOS
+        renders no visible hint for.
+      */}
+      <div className="sm:hidden mb-5 flex flex-col gap-2">
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as Filter)}
+          aria-label="Show"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-zinc-600"
+        >
+          {FILTERS.map(({ key, label }) => {
+            const count =
+              key === "ALL" ? byType.length : byType.filter((e) => e.status === key).length;
+            return (
+              <option key={key} value={key}>
+                {label} ({count})
+              </option>
+            );
+          })}
+        </select>
+        <div className="flex gap-2">
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+            aria-label="Filter by type"
+            className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-zinc-600"
+          >
+            {TYPE_FILTERS.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            aria-label="Sort by"
+            className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-zinc-600"
+          >
+            {SORT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Status tabs + sort (sm and up) */}
+      <div className="hidden sm:flex flex-wrap items-end justify-between gap-2 mb-5 border-b border-zinc-800">
         <div className="flex gap-1 overflow-x-auto max-w-full -mb-px">
           {FILTERS.map(({ key, label }) => {
             const count =
