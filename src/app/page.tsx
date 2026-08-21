@@ -11,6 +11,10 @@ export const dynamic = "force-dynamic";
 
 type SearchType = "all" | "albums" | "songs" | "artists";
 
+// The All view leads with albums and songs, so a long artist row pushes them off
+// screen. The Artists tab still shows the full set.
+const ARTISTS_IN_ALL_VIEW = 6;
+
 const TYPE_TABS: { key: SearchType; label: string }[] = [
   { key: "all", label: "All" },
   { key: "artists", label: "Artists" },
@@ -86,7 +90,8 @@ export default async function HomePage({
         ? savedSongs.get(songKey(item.title, item.artistName)) ?? null
         : null);
 
-    const total = albums.length + songs.length + artists.length;
+    const shownArtists = type === "all" ? artists.slice(0, ARTISTS_IN_ALL_VIEW) : artists;
+    const total = albums.length + songs.length + shownArtists.length;
 
     const grid = (list: SearchItem[]) => (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
@@ -127,11 +132,11 @@ export default async function HomePage({
           </div>
         ) : (
           <>
-            {artists.length > 0 && (
+            {shownArtists.length > 0 && (
               <section className="mb-10">
                 <SectionHeading>Artists</SectionHeading>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-5 sm:gap-5">
-                  {artists.map((artist) => (
+                  {shownArtists.map((artist) => (
                     <ArtistCard key={artist.id} artist={artist} />
                   ))}
                 </div>
