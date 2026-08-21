@@ -200,9 +200,14 @@ interface SpotifyAlbum {
   total_tracks: number;
 }
 
+/**
+ * A field filter value, quoted. The quotes are not optional for multi-word values:
+ * `album:Led Zeppelin artist:Led Zeppelin` returns zero results, because only the
+ * first word binds to the field and the rest become loose terms, while
+ * `album:"Led Zeppelin" artist:"Led Zeppelin"` finds the album immediately.
+ */
 function quote(s: string): string {
-  // Strip characters that break Spotify's field-filter syntax.
-  return s.replace(/["']/g, " ").trim();
+  return `"${s.replace(/["']/g, " ").trim()}"`;
 }
 
 /** The album's tracks, in order, as playlist-addable URIs. */
@@ -309,18 +314,29 @@ export async function ensurePlaylist(
   return { id: created.id, url: created.external_urls.spotify, created: true };
 }
 
-/** URIs already in the playlist, so a re-export doesn't duplicate them. */
+/**
+ * URIs already in the playlist, so a re-export doesn't duplicate them.
+ *
+ * Must use `/items`, not `/tracks`. Spotify's March 2026 migration replaced the
+ * `/playlists/{id}/tracks` sub-resource (which also covers podcast episodes now),
+ * and Development Mode apps get a bare 403 Forbidden on the old path — while
+ * `/playlists/{id}` itself still returns 200, which makes it look like a
+ * permissions problem rather than a moved endpoint. The response shape changed
+ * too: `items[].track` became `items[].item`.
+ */
 export async function playlistTrackUris(
   session: SpotifySession,
   playlistId: string
 ): Promise<Set<string>> {
   const uris = new Set<string>();
-  let url: string | null = `/playlists/${playlistId}/tracks?limit=100&fields=items(track(uri)),next`;
+  let url: string | null = `/playlists/${playlistId}/items?limit=100&fields=${encodeURIComponent(
+    "items(item(uri)),next"
+  )}`;
   while (url) {
-    const page: { items: { track: { uri: string } | null }[]; next: string | null } =
+    const page: { items: { item: { uri: string } | null }[]; next: string | null } =
       await api(session, url);
-    for (const item of page.items) {
-      if (item.track?.uri) uris.add(item.track.uri);
+    for (const entry of page.items) {
+      if (entry.item?.uri) uris.add(entry.item.uri);
     }
     url = page.next;
   }
@@ -334,7 +350,7 @@ export async function addTracks(
 ): Promise<void> {
   // Spotify accepts at most 100 URIs per request.
   for (let i = 0; i < uris.length; i += 100) {
-    await api(session, `/playlists/${playlistId}/tracks`, {
+    await api(session, `/playlists/${playlistId}/items`, {
       method: "POST",
       body: JSON.stringify({ uris: uris.slice(i, i + 100) }),
     });

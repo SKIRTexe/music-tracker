@@ -114,6 +114,21 @@ Matching is by text search against Spotify, so it won't find everything (obscure
 pressings, classical, MusicBrainz-only releases). Unmatched items are reported back
 rather than silently dropped — keep that behaviour.
 
+Three Spotify API traps, all hit for real and all presenting as unexplained failures:
+
+1. **Use `/playlists/{id}/items`, never `/playlists/{id}/tracks`.** The March 2026
+   migration replaced that sub-resource, and Development Mode apps get a bare
+   `403 Forbidden` on the old path — while `GET /playlists/{id}` still returns 200,
+   so it reads like a permissions problem rather than a moved endpoint. The response
+   shape changed too: `items[].track` → `items[].item`.
+2. **Create playlists with `POST /me/playlists`.** `POST /users/{user_id}/playlists`
+   returns 403 for both id forms `/me` gives you (`id`, the legacy username, and
+   `account_id`).
+3. **Quote every field-filter value in a search.** `album:Led Zeppelin artist:Led
+   Zeppelin` returns *zero* results because only the first word binds to the field;
+   `album:"Led Zeppelin" artist:"Led Zeppelin"` finds it instantly. Single-word and
+   forgiving titles hide this bug — "To Pimp a Butterfly" matched unquoted.
+
 ## Testing on a phone: never bind dev to 0.0.0.0
 
 To reach the dev server from a phone, bind it to the machine's **LAN IP**:
