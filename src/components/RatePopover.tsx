@@ -91,7 +91,7 @@ export function RatePopover({
           type="range"
           min="0"
           max="10"
-          step="0.5"
+          step="0.1"
           value={rating}
           onChange={(e) => setRating(parseFloat(e.target.value))}
           aria-label={`Rating for ${item.title}`}

@@ -95,7 +95,9 @@ export async function saveToLibrary(item: LibraryItemInput, status: string) {
 /** Rate an item 0–10. Rating something implies you listened to it. */
 export async function rateItem(item: LibraryItemInput, rating: number) {
   const userId = await requireUserId();
-  const clamped = Math.min(10, Math.max(0, rating));
+  // Ratings are 0–10 to one decimal. Rounded here so a stray float from the client
+  // can't store 7.300000000000001.
+  const clamped = Math.round(Math.min(10, Math.max(0, rating)) * 10) / 10;
 
   const existingSongId = await findExistingSongId(userId, item);
   if (existingSongId) {
