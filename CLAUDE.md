@@ -92,6 +92,31 @@ If you change ranking, re-check these queries by hand — each catches a differe
 failure: `radiohead`, `beatles`, `the beatles`, `kendrick lamar`, `kid a`,
 `bohemian rhapsody`, `karma police`, `queen`.
 
+## Testing on a phone: never bind dev to 0.0.0.0
+
+To reach the dev server from a phone, bind it to the machine's **LAN IP**:
+
+```bash
+npx next dev --port 3000 --hostname 192.168.1.202   # your current LAN IP
+```
+
+**Do not use `--hostname 0.0.0.0`.** The page still renders and looks perfect, but
+the dev client derives its HMR/RSC socket from the advertised host, and no browser
+can route to `0.0.0.0` — so **hydration never completes and nothing interactive
+works**, on every device, silently. No error appears in the terminal or the browser
+console. It presents as "the filters don't do anything": native `<select>` elements
+still open, because that needs no JavaScript, while the React state behind them is
+dead.
+
+Also set in `.env.local` for phone testing (both are documented in `.env.example`):
+`AUTH_URL=http://<lan-ip>:3000`, or sign-in redirects to an unreachable host.
+
+To check hydration without a browser at hand, add a temporary client component whose
+`useEffect` fetches a marked URL, load the page with
+`chrome --headless=new --dump-dom`, and grep the dev server log for the marker. A
+`--dump-dom` snapshot alone is not proof: Next's devtools overlay injects
+`nextjs-portal` even when app hydration has failed.
+
 ## Songs have no stable id — read this before touching song code
 
 MusicBrainz models a **recording per release**, so one studio song has many recording
