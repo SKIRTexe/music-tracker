@@ -175,104 +175,44 @@ async function api<T>(
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-/** Guard against confidently adding the wrong record on a loose text match. */
-function artistMatches(candidate: string, wanted: string): boolean {
-  const c = normalize(candidate);
-  const w = normalize(wanted);
-  if (!w) return true;
-  return c === w || c.includes(w) || w.includes(c);
-}
-
-interface SpotifyTrack {
-  uri: string;
-  name: string;
-  artists: { name: string }[];
-}
-
-interface SpotifyAlbum {
-  id: string;
-  name: string;
-  artists: { name: string }[];
-  total_tracks: number;
-}
-
 /**
- * A field filter value, quoted. The quotes are not optional for multi-word values:
- * `album:Led Zeppelin artist:Led Zeppelin` returns zero results, because only the
- * first word binds to the field and the rest become loose terms, while
- * `album:"Led Zeppelin" artist:"Led Zeppelin"` finds the album immediately.
+ * Track URIs for a saved library row.
+ *
+ * Library rows now store Spotify ids, so this is a direct lookup — no text search.
+ * Previously the export re-found each album by name, which silently missed things:
+ * "Led Zeppelin" returned nothing until a quoting bug was fixed.
  */
-function quote(s: string): string {
-  return `"${s.replace(/["']/g, " ").trim()}"`;
-}
-
-/** The album's tracks, in order, as playlist-addable URIs. */
-async function albumTrackUris(session: SpotifySession, albumId: string): Promise<string[]> {
-  const uris: string[] = [];
-  let url: string | null = `/albums/${albumId}/tracks?limit=50`;
-  while (url) {
-    const page: { items: { uri: string }[]; next: string | null } = await api(session, url);
-    uris.push(...page.items.map((t) => t.uri));
-    url = page.next;
+export async function urisForItem(
+  session: SpotifySession,
+  itemType: string,
+  id: string
+): Promise<{ uris: string[]; label?: string }> {
+  if (itemType === "SONG") {
+    try {
+      const t = await api<{ uri: string; name: string; artists: { name: string }[] }>(
+        session,
+        `/tracks/${id}`
+      );
+      return { uris: [t.uri], label: `${t.name} — ${t.artists[0]?.name ?? "?"}` };
+    } catch {
+      return { uris: [] };
+    }
   }
-  return uris;
+
+  try {
+    const uris: string[] = [];
+    let url: string | null = `/albums/${id}/tracks?limit=50`;
+    while (url) {
+      const page: { items: { uri: string }[]; next: string | null } = await api(session, url);
+      uris.push(...page.items.map((t) => t.uri));
+      url = page.next;
+    }
+    return { uris, label: `${uris.length} track${uris.length === 1 ? "" : "s"}` };
+  } catch {
+    return { uris: [] };
+  }
 }
 
-export interface ResolveResult {
-  uris: string[];
-  /** What we matched, for the report shown to the user. */
-  matchedAs?: string;
-}
-
-/** Find an album on Spotify and expand it to all of its track URIs. */
-export async function resolveAlbum(
-  session: SpotifySession,
-  title: string,
-  artist: string
-): Promise<ResolveResult> {
-  const q = `album:${quote(title)} artist:${quote(artist)}`;
-  const found = await api<{ albums: { items: SpotifyAlbum[] } }>(
-    session,
-    `/search?q=${encodeURIComponent(q)}&type=album&limit=5`
-  );
-  const album =
-    found.albums.items.find(
-      (a) => normalize(a.name) === normalize(title) && artistMatches(a.artists[0]?.name ?? "", artist)
-    ) ?? found.albums.items.find((a) => artistMatches(a.artists[0]?.name ?? "", artist));
-
-  if (!album) return { uris: [] };
-  return {
-    uris: await albumTrackUris(session, album.id),
-    matchedAs: `${album.name} — ${album.artists[0]?.name ?? "?"} (${album.total_tracks} tracks)`,
-  };
-}
-
-/** Find a single song on Spotify. */
-export async function resolveSong(
-  session: SpotifySession,
-  title: string,
-  artist: string
-): Promise<ResolveResult> {
-  const q = `track:${quote(title)} artist:${quote(artist)}`;
-  const found = await api<{ tracks: { items: SpotifyTrack[] } }>(
-    session,
-    `/search?q=${encodeURIComponent(q)}&type=track&limit=5`
-  );
-  const track =
-    found.tracks.items.find(
-      (t) => normalize(t.name) === normalize(title) && artistMatches(t.artists[0]?.name ?? "", artist)
-    ) ?? found.tracks.items.find((t) => artistMatches(t.artists[0]?.name ?? "", artist));
-
-  if (!track) return { uris: [] };
-  return {
-    uris: [track.uri],
-    matchedAs: `${track.name} — ${track.artists[0]?.name ?? "?"}`,
-  };
-}
 
 // ── Playlist ───────────────────────────────────────────────────────────────────
 

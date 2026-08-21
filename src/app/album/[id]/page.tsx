@@ -1,5 +1,4 @@
-import { getAlbumDetail, isNotFound } from "@/lib/musicbrainz";
-import { resolveAlbumArtwork } from "@/lib/artwork";
+import { getAlbum, CatalogNotFound } from "@/lib/catalog";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
@@ -17,26 +16,21 @@ function formatDuration(ms: number): string {
   return `${min}:${sec}`;
 }
 
-export default async function AlbumPage({
-  params,
-}: {
-  params: Promise<{ mbid: string }>;
-}) {
-  const { mbid } = await params;
+export default async function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   let album;
   try {
-    album = await getAlbumDetail(mbid);
+    album = await getAlbum(id);
   } catch (err) {
-    if (isNotFound(err)) notFound();
-    // Transient failure — offer a retry rather than a misleading 404.
+    if (err instanceof CatalogNotFound) notFound();
     return (
       <div className="max-w-2xl mx-auto pt-20 text-center">
         <p className="text-zinc-400 text-sm mb-3">
-          Could not load this album. MusicBrainz may be temporarily unavailable.
+          Could not load this album. Please try again.
         </p>
         <Link
-          href={`/album/${mbid}`}
+          href={`/album/${id}`}
           className="text-xs text-zinc-400 hover:text-zinc-200 underline underline-offset-2"
         >
           Try again
@@ -45,26 +39,16 @@ export default async function AlbumPage({
     );
   }
 
-  // iTunes has better coverage and larger images than Cover Art Archive; fall back
-  // to CAA when it has nothing.
-  const [itunesArt, session] = await Promise.all([
-    resolveAlbumArtwork(album.title, album.artistName),
-    auth(),
-  ]);
-  const artworkUrl = itunesArt ?? album.coverArtUrl;
-
+  const session = await auth();
   const [userEntry, trackEntries, savedSongs] = await Promise.all([
     session?.user?.id
       ? prisma.albumLog.findUnique({
           where: { userId_mbid: { userId: session.user.id, mbid: album.id } },
         })
       : Promise.resolve(null),
-    getExistingEntries(
-      session?.user?.id,
-      album.tracks.map((t) => t.recordingId).filter((id): id is string => !!id)
-    ),
-    // Falls back to title+artist, since the same song may be saved under a
-    // different MusicBrainz recording id.
+    getExistingEntries(session?.user?.id, album.tracks.map((t) => t.id)),
+    // Falls back to title+artist, since the same song exists under a different
+    // track id on every album it appears on.
     getSavedSongs(session?.user?.id),
   ]);
 
@@ -81,9 +65,9 @@ export default async function AlbumPage({
 
       <div className="flex gap-4 sm:gap-6 mb-8 sm:mb-10">
         <div className="shrink-0 w-28 h-28 sm:w-44 sm:h-44 rounded-lg overflow-hidden bg-zinc-800">
-          {artworkUrl ? (
+          {album.coverArtUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={artworkUrl} alt={album.title} className="w-full h-full object-cover" />
+            <img src={album.coverArtUrl} alt={album.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center p-4">
               <span className="text-zinc-500 text-xs text-center leading-snug">{album.title}</span>
@@ -96,7 +80,13 @@ export default async function AlbumPage({
             {album.title}
           </h1>
           <p className="text-sm text-zinc-500 mb-3">
-            {album.artistName}
+            {album.artistId ? (
+              <Link href={`/artist/${album.artistId}`} className="hover:text-zinc-300 transition-colors">
+                {album.artistName}
+              </Link>
+            ) : (
+              album.artistName
+            )}
             {album.year && <span className="text-zinc-700"> · {album.year}</span>}
             {album.tracks.length > 0 && (
               <span className="text-zinc-700">
@@ -110,10 +100,10 @@ export default async function AlbumPage({
             <div className="flex flex-wrap gap-1.5 mb-4">
               {album.genres.slice(0, 6).map((g) => (
                 <span
-                  key={g.id}
+                  key={g}
                   className="text-[10px] px-2 py-0.5 bg-zinc-800 rounded text-zinc-400 capitalize"
                 >
-                  {g.name}
+                  {g}
                 </span>
               ))}
             </div>
@@ -124,8 +114,8 @@ export default async function AlbumPage({
             albumTitle={album.title}
             artistName={album.artistName}
             releaseYear={album.year ? parseInt(album.year) : undefined}
-            coverUrl={artworkUrl ?? undefined}
-            artistMbid={album.artistMbid}
+            coverUrl={album.coverArtUrl ?? undefined}
+            artistMbid={album.artistId}
             isLoggedIn={!!session?.user}
             initialStatus={userEntry?.status ?? null}
             initialRating={userEntry?.rating ?? null}
@@ -151,12 +141,12 @@ export default async function AlbumPage({
                 index={i}
                 albumTitle={album.title}
                 artistName={album.artistName}
-                artistMbid={album.artistMbid}
+                artistMbid={album.artistId}
                 releaseYear={album.year ? parseInt(album.year) : undefined}
-                coverUrl={artworkUrl ?? undefined}
+                coverUrl={album.coverArtUrl ?? undefined}
                 isLoggedIn={!!session?.user}
                 existing={
-                  (track.recordingId && trackEntries.get(track.recordingId)) ||
+                  trackEntries.get(track.id) ||
                   savedSongs.get(songKey(track.title, album.artistName)) ||
                   null
                 }

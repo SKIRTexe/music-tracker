@@ -5,7 +5,7 @@ import Link from "next/link";
 import { RatePopover, STATUS_LABELS } from "@/components/RatePopover";
 import type { LibraryItemInput } from "@/app/actions";
 import type { ExistingEntry } from "@/lib/library";
-import type { MBTrack } from "@/lib/musicbrainz";
+import type { CatalogTrack } from "@/lib/catalog";
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -26,7 +26,7 @@ export function TrackRow({
   isLoggedIn,
   existing,
 }: {
-  track: MBTrack;
+  track: CatalogTrack;
   index: number;
   albumTitle: string;
   artistName: string;
@@ -54,9 +54,8 @@ export function TrackRow({
     };
   }, [open]);
 
-  // Songs are keyed by recording id so this matches what song search saves. Without
-  // one there's nothing stable to attach a rating to, so the row stays read-only.
-  const mbid = track.recordingId;
+  // A Spotify track id is the library key for a song.
+  const mbid = track.id;
 
   const item: LibraryItemInput = {
     mbid: mbid ?? "",

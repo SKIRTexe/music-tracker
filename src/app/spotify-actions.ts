@@ -9,8 +9,7 @@ import {
   ensurePlaylist,
   playlistTrackUris,
   addTracks,
-  resolveAlbum,
-  resolveSong,
+  urisForItem,
 } from "@/lib/spotify";
 
 export type ExportReport = {
@@ -46,7 +45,7 @@ export async function exportWantToListen(): Promise<ExportReport> {
   const wanted = await prisma.albumLog.findMany({
     where: { userId, status: "WANT" },
     orderBy: { addedAt: "asc" },
-    select: { albumTitle: true, artistName: true, itemType: true },
+    select: { mbid: true, albumTitle: true, artistName: true, itemType: true },
   });
 
   if (wanted.length === 0) {
@@ -81,10 +80,7 @@ export async function exportWantToListen(): Promise<ExportReport> {
 
     for (const item of wanted) {
       const label = `${item.albumTitle} — ${item.artistName}`;
-      const result =
-        item.itemType === "SONG"
-          ? await resolveSong(spotify, item.albumTitle, item.artistName)
-          : await resolveAlbum(spotify, item.albumTitle, item.artistName);
+      const result = await urisForItem(spotify, item.itemType, item.mbid);
 
       if (result.uris.length === 0) {
         missing.push(label);
@@ -93,7 +89,7 @@ export async function exportWantToListen(): Promise<ExportReport> {
 
       matched.push({
         label,
-        matchedAs: result.matchedAs ?? label,
+        matchedAs: result.label ?? label,
         trackCount: result.uris.length,
       });
 

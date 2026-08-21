@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { type LibraryItemInput } from "@/app/actions";
 import { RatePopover, STATUS_LABELS } from "@/components/RatePopover";
-import type { SearchItem } from "@/lib/search";
+import type { SearchItem } from "@/lib/catalog";
 
 // Hold a cover to open the rate popover without leaving the page. Matches the
 // original gesture: 550ms, cancelled if the pointer moves more than 8px (so
@@ -27,10 +27,9 @@ export function ResultCard({
 }) {
   const isSong = item.itemType === "SONG";
 
-  // Cover art: try Cover Art Archive, then fall back to an iTunes lookup, then to a
-  // text placeholder. The iTunes call only fires for covers CAA is missing.
+  // Spotify includes cover art in the search response, so a missing image just
+  // falls back to the title placeholder — no second lookup needed.
   const [src, setSrc] = useState<string | null>(item.coverArtUrl);
-  const [triedItunes, setTriedItunes] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [saved, setSaved] = useState<ExistingEntry | null>(existing ?? null);
@@ -109,18 +108,7 @@ export function ResultCard({
     if (pointerKind.current !== "mouse") e.preventDefault();
   };
 
-  const handleImageError = async () => {
-    if (triedItunes) { setSrc(null); return; }
-    setTriedItunes(true);
-    try {
-      const params = new URLSearchParams({ title: item.title, artist: item.artistName });
-      const res = await fetch(`/api/artwork?${params.toString()}`);
-      const data = await res.json();
-      setSrc(data.url ?? null);
-    } catch {
-      setSrc(null);
-    }
-  };
+  const handleImageError = () => setSrc(null);
 
   const payload = (): LibraryItemInput => ({
     mbid: item.id,
@@ -130,7 +118,7 @@ export function ResultCard({
     parentAlbum: item.parentAlbum,
     releaseYear: item.year ? parseInt(item.year) : undefined,
     coverUrl: src ?? undefined,
-    artistMbid: item.artistMbid,
+    artistMbid: item.artistId,
   });
 
   // Visible by default so it exists on touch; only pointer devices hide it until hover.

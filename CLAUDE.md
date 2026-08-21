@@ -165,6 +165,14 @@ exist yet. A failed migration fails the build, which is the safe direction.
 Supabase free projects pause after ~7 days idle; the first request after that errors
 until it is resumed from the dashboard.
 
+## Spotify API limits that are not in the docs
+
+- `search` and `artists/{id}/albums` **cap `limit` at 10**. Asking for 11 returns
+  `400 "Invalid limit"` rather than a clamped result, so anything longer is paged by
+  offset. `albums/{id}/tracks` still allows 50 — the cap is per endpoint.
+- Playlist contents live at `/playlists/{id}/items`, not `/tracks` (403 on the old
+  path), and creation is `POST /me/playlists`, not `/users/{id}/playlists`.
+
 ## Songs have no stable id — read this before touching song code
 
 MusicBrainz models a **recording per release**, so one studio song has many recording
