@@ -479,83 +479,75 @@ function dedupe(
  * this to three MusicBrainz requests — they are rate limited to roughly one per
  * second, so request count is the main cost.
  */
-export async function search(
-  query: string,
-  opts: { albums?: boolean; songs?: boolean; artists?: boolean; limit?: number } = {}
-): Promise<SearchResults> {
-  const {
-    albums: wantAlbums = true,
-    songs: wantSongs = true,
-    artists: wantArtists = true,
-    limit = 24,
-  } = opts;
+/**
+ * The shared groundwork for album and song results: one release-group text search,
+ * plus who (if anyone) the query names.
+ *
+ * Albums and songs are fetched by separate streamed sections, so both call this.
+ * That costs nothing extra — `mbFetch` deduplicates identical in-flight requests
+ * and caches the result, so the second caller reuses the first one's work.
+ */
+async function searchContext(query: string) {
   const term = luceneTerm(query);
-  if (!term) return { albums: [], songs: [], artists: [] };
-
-  // Queued first so it runs alongside the album/song pipeline rather than after it.
-  const artistsPromise = wantArtists
-    ? searchArtists(query, limit)
-    : Promise.resolve([] as ArtistItem[]);
-
-  // The album text search doubles as artist detection, so it runs for a songs-only
-  // search too — but not when only artists were asked for.
-  const groups = wantAlbums || wantSongs ? await albumTextSearch(term) : [];
+  const groups = await albumTextSearch(term);
   const detected = detectArtist(query, groups);
-
   const normalizedQuery = normalize(query);
-  const exactTitleMatches = groups.filter(
-    (g) => normalize(g.title) === normalizedQuery
-  ).length;
+  const exactTitleMatches = groups.filter((g) => normalize(g.title) === normalizedQuery).length;
   const artist = isArtistLed(detected, exactTitleMatches) ? detected : null;
+  return { term, groups, artist, normalizedQuery };
+}
 
-  const [discography, recordings, artistResults] = await Promise.all([
-    // Fetched whenever an artist was detected, not only when albums are wanted:
-    // its size is how song ranking tells a prominent artist from a name collision,
-    // so skipping it would make the Songs tab disagree with the All tab.
-    artist ? artistDiscography(artist, 100) : Promise.resolve([]),
-    wantSongs ? songSearch(term, artist?.id ?? null) : Promise.resolve([]),
-    artistsPromise,
-  ]);
+/** Albums for the query. Resolves independently of the songs and artists sections. */
+export async function searchAlbumSection(query: string, limit = 24): Promise<SearchItem[]> {
+  if (!luceneTerm(query)) return [];
+  const { groups, artist, normalizedQuery } = await searchContext(query);
+  const discography = artist ? await artistDiscography(artist, 100) : [];
 
-  let albums: SearchItem[] = [];
-  if (wantAlbums) {
-    const textMatches = groups
-      // Singles and EPs earned their place in the query above, but this is the
-      // albums list.
-      .filter((rg) => (rg["primary-type"] ?? "Album") === "Album")
-      .map((rg) => {
-        const item = albumFromReleaseGroup(rg);
-        const secondary = (rg["secondary-types"] ?? []).length > 0;
-        return {
-          item,
-          score:
-            rank(query, item.title, item.artistName, rg.score ?? 0, !!item.year) -
-            (secondary ? 1 : 0),
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map(({ item }) => item);
+  const textMatches = groups
+    // Singles and EPs earned their place in the query, but this is the albums list.
+    .filter((rg) => (rg["primary-type"] ?? "Album") === "Album")
+    .map((rg) => {
+      const item = albumFromReleaseGroup(rg);
+      const secondary = (rg["secondary-types"] ?? []).length > 0;
+      return {
+        item,
+        score:
+          rank(query, item.title, item.artistName, rg.score ?? 0, !!item.year) -
+          (secondary ? 1 : 0),
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map(({ item }) => item);
 
-    // An artist's own discography leads; title matches fill in behind it.
-    albums = dedupe([...discography, ...textMatches], limit, { exemptTitle: normalizedQuery });
-  }
+  // An artist's own discography leads; title matches fill in behind it.
+  return dedupe([...discography, ...textMatches], limit, { exemptTitle: normalizedQuery });
+}
 
-  return {
-    albums,
-    songs: wantSongs
-      ? rankSongs(
-          query,
-          recordings,
-          limit,
-          artist?.id ?? null,
-          discography.length,
-          new Set(
-            groups
-              .map((g) => g["artist-credit"]?.[0]?.artist?.id)
-              .filter((id): id is string => !!id)
-          )
-        )
-      : [],
-    artists: artistResults,
-  };
+/** Songs for the query. Resolves independently of the albums and artists sections. */
+export async function searchSongSection(query: string, limit = 24): Promise<SearchItem[]> {
+  const term = luceneTerm(query);
+  if (!term) return [];
+  const { groups, artist } = await searchContext(query);
+
+  // Discography size is how song ranking tells a prominent artist from a name
+  // collision. Same request the albums section makes, so it's already cached.
+  const discography = artist ? await artistDiscography(artist, 100) : [];
+  const recordings = await songSearch(term, artist?.id ?? null);
+
+  return rankSongs(
+    query,
+    recordings,
+    limit,
+    artist?.id ?? null,
+    discography.length,
+    new Set(
+      groups.map((g) => g["artist-credit"]?.[0]?.artist?.id).filter((id): id is string => !!id)
+    )
+  );
+}
+
+/** Artists for the query — a single request, so this section is always the quickest. */
+export async function searchArtistSection(query: string, limit = 24): Promise<ArtistItem[]> {
+  if (!luceneTerm(query)) return [];
+  return searchArtists(query, limit);
 }

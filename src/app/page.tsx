@@ -1,4 +1,10 @@
-import { search, type SearchItem } from "@/lib/search";
+import { Suspense } from "react";
+import {
+  searchAlbumSection,
+  searchSongSection,
+  searchArtistSection,
+  type SearchItem,
+} from "@/lib/search";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getExistingEntries, getSavedSongs, songKey, type ExistingEntry } from "@/lib/library";
@@ -45,26 +51,103 @@ function SearchBar({ defaultValue, type, big }: { defaultValue: string; type: Se
   );
 }
 
-function ResultGrid({
-  items,
-  isLoggedIn,
-  entryFor,
-}: {
-  items: SearchItem[];
-  isLoggedIn: boolean;
-  entryFor: (item: SearchItem) => ExistingEntry | null;
-}) {
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">{children}</h2>;
+}
+
+/** Placeholder cards, so a pending section already has the shape of its result. */
+function CardSkeleton({ count, round }: { count: number; round?: boolean }) {
+  return (
+    <div
+      className={`grid gap-x-3 gap-y-5 sm:gap-5 ${
+        round
+          ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8"
+          : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+      }`}
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i}>
+          <div
+            className={`aspect-square bg-zinc-900 animate-pulse ${round ? "rounded-full" : "rounded-lg"}`}
+          />
+          <div className="h-2 bg-zinc-900 rounded mt-2 animate-pulse" />
+          <div className="h-2 bg-zinc-900/60 rounded mt-1.5 w-2/3 animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Result cards, marking anything the user has already saved. */
+async function ItemGrid({ items }: { items: SearchItem[] }) {
+  const session = await auth();
+  const [existing, savedSongs] = await Promise.all([
+    getExistingEntries(session?.user?.id, items.map((i) => i.id)),
+    getSavedSongs(session?.user?.id),
+  ]);
+  const entryFor = (item: SearchItem): ExistingEntry | null =>
+    existing.get(item.id) ??
+    (item.itemType === "SONG"
+      ? savedSongs.get(songKey(item.title, item.artistName)) ?? null
+      : null);
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
       {items.map((item) => (
         <ResultCard
           key={item.id}
           item={item}
-          isLoggedIn={isLoggedIn}
+          isLoggedIn={!!session?.user}
           existing={entryFor(item)}
         />
       ))}
     </div>
+  );
+}
+
+/*
+ * Each section fetches independently and is streamed in by Suspense. One handler
+ * used to await all three before sending anything, so a cold search showed a blank
+ * page for ~16 seconds. Now the shell is immediate and each section appears as it
+ * resolves — artists first, since that's a single MusicBrainz request.
+ *
+ * Albums and songs both need the same release-group search for artist detection;
+ * that costs nothing extra because mbFetch shares in-flight requests and caches.
+ */
+async function ArtistResults({ query, limit }: { query: string; limit: number }) {
+  const artists = await searchArtistSection(query, limit);
+  if (artists.length === 0) return null;
+  return (
+    <section className="mb-10">
+      <SectionHeading>Artists</SectionHeading>
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-5 sm:gap-5">
+        {artists.map((artist) => (
+          <ArtistCard key={artist.id} artist={artist} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function AlbumResults({ query, limit }: { query: string; limit: number }) {
+  const albums = await searchAlbumSection(query, limit);
+  if (albums.length === 0) return null;
+  return (
+    <section className="mb-10">
+      <SectionHeading>Albums</SectionHeading>
+      <ItemGrid items={albums} />
+    </section>
+  );
+}
+
+async function SongResults({ query, limit }: { query: string; limit: number }) {
+  const songs = await searchSongSection(query, limit);
+  if (songs.length === 0) return null;
+  return (
+    <section className="mb-10">
+      <SectionHeading>Songs</SectionHeading>
+      <ItemGrid items={songs} />
+    </section>
   );
 }
 
@@ -85,25 +168,8 @@ export default async function HomePage({
 
   // ── Search results ─────────────────────────────────────────────────────────
   if (query) {
-    const { albums, songs, artists } = await search(query, {
-      albums: type === "all" || type === "albums",
-      songs: type === "all" || type === "songs",
-      artists: type === "all" || type === "artists",
-      limit: type === "all" ? 18 : 36,
-    });
-
-    const [existing, savedSongs] = await Promise.all([
-      getExistingEntries(session?.user?.id, [...albums, ...songs].map((i) => i.id)),
-      // Songs may be saved under a different recording id for the same song.
-      getSavedSongs(session?.user?.id),
-    ]);
-    const entryFor = (item: SearchItem): ExistingEntry | null =>
-      existing.get(item.id) ??
-      (item.itemType === "SONG"
-        ? savedSongs.get(songKey(item.title, item.artistName)) ?? null
-        : null);
-
-    const total = albums.length + songs.length + artists.length;
+    const limit = type === "all" ? 18 : 36;
+    const show = (t: SearchType) => type === "all" || type === t;
 
     return (
       <div>
@@ -115,9 +181,7 @@ export default async function HomePage({
                 key={key}
                 href={`/?q=${encodeURIComponent(query)}${key === "all" ? "" : `&type=${key}`}`}
                 className={`px-3 py-1 text-xs rounded transition-colors ${
-                  type === key
-                    ? "bg-zinc-700 text-zinc-100"
-                    : "text-zinc-500 hover:text-zinc-300"
+                  type === key ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 {label}
@@ -126,51 +190,43 @@ export default async function HomePage({
           </div>
         </div>
 
-        {total === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-zinc-400 text-sm mb-1">No results for &ldquo;{query}&rdquo;</p>
-            <p className="text-zinc-600 text-xs">
-              Try an artist name, or check the spelling. MusicBrainz may also be
-              temporarily unavailable.
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="text-xs text-zinc-600 mb-6">
-              {total} result{total === 1 ? "" : "s"} for &ldquo;{query}&rdquo;
-            </p>
-
-            {artists.length > 0 && (
+        {show("artists") && (
+          <Suspense
+            fallback={
               <section className="mb-10">
-                <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
-                  Artists
-                </h2>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-5 sm:gap-5">
-                  {artists.map((artist) => (
-                    <ArtistCard key={artist.id} artist={artist} />
-                  ))}
-                </div>
+                <SectionHeading>Artists</SectionHeading>
+                <CardSkeleton count={8} round />
               </section>
-            )}
+            }
+          >
+            <ArtistResults query={query} limit={limit} />
+          </Suspense>
+        )}
 
-            {albums.length > 0 && (
+        {show("albums") && (
+          <Suspense
+            fallback={
               <section className="mb-10">
-                <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
-                  Albums
-                </h2>
-                <ResultGrid items={albums} isLoggedIn={isLoggedIn} entryFor={entryFor} />
+                <SectionHeading>Albums</SectionHeading>
+                <CardSkeleton count={6} />
               </section>
-            )}
+            }
+          >
+            <AlbumResults query={query} limit={limit} />
+          </Suspense>
+        )}
 
-            {songs.length > 0 && (
-              <section>
-                <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
-                  Songs
-                </h2>
-                <ResultGrid items={songs} isLoggedIn={isLoggedIn} entryFor={entryFor} />
+        {show("songs") && (
+          <Suspense
+            fallback={
+              <section className="mb-10">
+                <SectionHeading>Songs</SectionHeading>
+                <CardSkeleton count={6} />
               </section>
-            )}
-          </>
+            }
+          >
+            <SongResults query={query} limit={limit} />
+          </Suspense>
         )}
       </div>
     );
@@ -193,7 +249,9 @@ export default async function HomePage({
   return (
     <div>
       <div className="pt-8 sm:pt-12 pb-8 sm:pb-10 text-center">
-        <h1 className="text-2xl sm:text-3xl font-bold text-zinc-100 mb-2">Track the music you love</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-zinc-100 mb-2">
+          Track the music you love
+        </h1>
         <p className="text-sm text-zinc-500 mb-8">
           Search any album or song, add it to your library, rate it out of 10.
         </p>
@@ -213,9 +271,7 @@ export default async function HomePage({
       {recent.length > 0 && (
         <section className="border-t border-zinc-800/60 pt-8">
           <div className="flex items-baseline justify-between mb-4">
-            <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest">
-              Recently added
-            </h2>
+            <SectionHeading>Recently added</SectionHeading>
             <Link href="/library" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
               View library →
             </Link>

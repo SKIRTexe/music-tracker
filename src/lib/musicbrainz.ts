@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/prisma";
+
 const MB_BASE = "https://musicbrainz.org/ws/2";
 // MusicBrainz requires a descriptive User-Agent with real contact info, and blocks
 // clients that send a fake one. Set MB_CONTACT in your env to your email or site URL.
@@ -7,9 +9,40 @@ const USER_AGENT = `Recordcrate/1.0 ( ${process.env.MB_CONTACT ?? "https://githu
 // Going faster gets the whole IP blocked, which is what an outage looks like from here.
 const MB_REQUEST_GAP_MS = 1100;
 
-// ── In-process cache (survives hot-reloads in dev, avoids rate-limit hammering) ──
+// ── Two-level cache ───────────────────────────────────────────────────────────
+// L1 is in-process and free to read, but on Vercel it dies with each serverless
+// instance — a repeat search would pay the full multi-second cost again. L2 is a
+// Postgres table shared by every instance, so a query stays fast once anyone has
+// run it.
 const mbCache = new Map<string, { data: unknown; expires: number }>();
-const MB_TTL = 60 * 60 * 1000; // 1 hour
+const MB_TTL = 60 * 60 * 1000; // 1 hour in memory
+const MB_DB_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours in Postgres
+
+async function readPersistentCache(url: string): Promise<unknown | undefined> {
+  try {
+    const row = await prisma.mbCache.findUnique({ where: { url } });
+    if (!row || row.expiresAt.getTime() < Date.now()) return undefined;
+    return JSON.parse(row.body);
+  } catch {
+    // A cache miss must never break a search.
+    return undefined;
+  }
+}
+
+function writePersistentCache(url: string, data: unknown): void {
+  const body = JSON.stringify(data);
+  // Postgres has a 1GB limit per field, but there's no reason to store huge blobs.
+  if (body.length > 2_000_000) return;
+  const expiresAt = new Date(Date.now() + MB_DB_TTL_MS);
+  // Deliberately not awaited — the response shouldn't wait on the cache write.
+  void prisma.mbCache
+    .upsert({
+      where: { url },
+      create: { url, body, expiresAt },
+      update: { body, expiresAt },
+    })
+    .catch(() => {});
+}
 
 // ── In-flight deduplication — concurrent requests for the same URL share one promise ──
 const mbInFlight = new Map<string, Promise<unknown>>();
@@ -107,9 +140,17 @@ export async function mbFetch(
   const cached = mbCache.get(urlStr);
   if (cached && cached.expires > Date.now()) return cached.data;
 
-  // If an identical request is already queued, share its promise.
+  // If an identical request is already queued, share its promise. This is what lets
+  // the three streamed search sections reuse one underlying request instead of
+  // each paying for its own.
   const existing = mbInFlight.get(urlStr);
   if (existing) return existing;
+
+  const persisted = await readPersistentCache(urlStr);
+  if (persisted !== undefined) {
+    mbCache.set(urlStr, { data: persisted, expires: Date.now() + MB_TTL });
+    return persisted;
+  }
 
   const isDirectLookup = /^\/(release|release-group|artist)\/[0-9a-f-]{36}$/.test(path);
   const priority = isDirectLookup ? "high" : callerPriority;
@@ -117,6 +158,7 @@ export async function mbFetch(
   const promise = enqueue((p) => mbFetchRaw(urlStr, p), priority)
     .then((data) => {
       mbCache.set(urlStr, { data, expires: Date.now() + MB_TTL });
+      writePersistentCache(urlStr, data);
       mbInFlight.delete(urlStr);
       return data;
     })

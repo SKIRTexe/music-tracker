@@ -105,3 +105,15 @@ model Review {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   albumLog AlbumLog @relation(fields: [albumLogId], references: [id], onDelete: Cascade)
 }
+
+/// MusicBrainz responses, cached across serverless instances.
+/// The in-process cache dies with each Vercel lambda, so without this a repeat
+/// search pays the full multi-second cost again.
+model MbCache {
+  url       String   @id
+  body      String   @db.Text
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
