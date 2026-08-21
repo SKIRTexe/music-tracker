@@ -102,10 +102,10 @@ export function TrackRow({
           <button
             onClick={() => setOpen((o) => !o)}
             aria-label={saved ? `Edit rating for ${track.title}` : `Rate ${track.title}`}
-            className={`w-6 h-6 flex items-center justify-center rounded-full text-xs transition-all ${
+            className={`w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center rounded-full text-xs transition-all ${
               saved
                 ? "bg-zinc-100 text-zinc-900"
-                : "bg-zinc-800 text-zinc-300 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-700"
+                : "bg-zinc-800 text-zinc-300 can-hover:opacity-0 can-hover:group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-700"
             } ${open ? "opacity-100" : ""}`}
           >
             {saved ? "✓" : "+"}
@@ -114,7 +114,7 @@ export function TrackRow({
           <Link
             href="/login"
             aria-label="Sign in to rate"
-            className="w-6 h-6 flex items-center justify-center rounded-full bg-zinc-800 text-zinc-300 text-xs opacity-0 group-hover:opacity-100 hover:bg-zinc-700 transition-all"
+            className="w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-zinc-800 text-zinc-300 text-xs can-hover:opacity-0 can-hover:group-hover:opacity-100 hover:bg-zinc-700 transition-all"
           >
             +
           </Link>

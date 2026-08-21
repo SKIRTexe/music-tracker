@@ -30,13 +30,13 @@ function SearchBar({ defaultValue, type, big }: { defaultValue: string; type: Se
         autoFocus={big}
         aria-label="Search"
         className={`flex-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 ${
-          big ? "px-4 py-3 text-base" : "px-3 py-2 text-sm"
+          big ? "px-4 py-3 text-base" : "px-3 py-2.5 text-base sm:text-sm"
         }`}
       />
       <button
         type="submit"
         className={`bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors ${
-          big ? "px-6 py-3 text-base" : "px-4 py-2 text-sm"
+          big ? "px-6 py-3 text-base" : "px-4 py-2.5 text-base sm:text-sm"
         }`}
       >
         Search
@@ -55,7 +55,7 @@ function ResultGrid({
   entryFor: (item: SearchItem) => ExistingEntry | null;
 }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
       {items.map((item) => (
         <ResultCard
           key={item.id}
@@ -107,7 +107,7 @@ export default async function HomePage({
 
     return (
       <div>
-        <div className="sticky top-0 z-20 -mx-4 px-4 bg-zinc-950/95 backdrop-blur border-b border-zinc-800/60 pt-4 pb-3 mb-8">
+        <div className="sticky top-12 z-20 -mx-3 sm:-mx-4 px-3 sm:px-4 bg-zinc-950/95 backdrop-blur border-b border-zinc-800/60 pt-3 pb-3 mb-6 sm:mb-8">
           <SearchBar defaultValue={query} type={type} />
           <div className="flex gap-1 mt-3">
             {TYPE_TABS.map(({ key, label }) => (
@@ -145,7 +145,7 @@ export default async function HomePage({
                 <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
                   Artists
                 </h2>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-5">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-5 sm:gap-5">
                   {artists.map((artist) => (
                     <ArtistCard key={artist.id} artist={artist} />
                   ))}
@@ -192,8 +192,8 @@ export default async function HomePage({
 
   return (
     <div>
-      <div className="pt-12 pb-10 text-center">
-        <h1 className="text-3xl font-bold text-zinc-100 mb-2">Track the music you love</h1>
+      <div className="pt-8 sm:pt-12 pb-8 sm:pb-10 text-center">
+        <h1 className="text-2xl sm:text-3xl font-bold text-zinc-100 mb-2">Track the music you love</h1>
         <p className="text-sm text-zinc-500 mb-8">
           Search any album or song, add it to your library, rate it out of 10.
         </p>
@@ -220,7 +220,7 @@ export default async function HomePage({
               View library →
             </Link>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
             {recent.map((entry) => (
               <LibraryItemCard key={entry.id} entry={entry} />
             ))}

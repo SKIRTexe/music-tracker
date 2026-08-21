@@ -133,9 +133,10 @@ export function ResultCard({
     artistMbid: item.artistMbid,
   });
 
+  // Visible by default so it exists on touch; only pointer devices hide it until hover.
   const triggerClass = saved
     ? "bg-zinc-100 text-zinc-900"
-    : "bg-zinc-950/80 text-zinc-200 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-800";
+    : "bg-zinc-950/80 text-zinc-200 can-hover:opacity-0 can-hover:group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-800";
 
   const cover = (
     <div className="aspect-square rounded-lg overflow-hidden bg-zinc-800">
@@ -188,7 +189,7 @@ export function ResultCard({
         <button
           onClick={() => setMenuOpen((o) => !o)}
           aria-label={saved ? "Edit library entry" : "Add to library"}
-          className={`absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full text-sm transition-all ${triggerClass} ${menuOpen ? "opacity-100" : ""}`}
+          className={`absolute top-1 right-1 w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center rounded-full text-sm transition-all ${triggerClass} ${menuOpen ? "opacity-100" : ""}`}
         >
           {saved ? "✓" : "+"}
         </button>
@@ -196,7 +197,7 @@ export function ResultCard({
         <Link
           href="/login"
           aria-label="Sign in to add"
-          className="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-zinc-950/80 text-zinc-200 text-sm opacity-0 group-hover:opacity-100 hover:bg-zinc-800 transition-all"
+          className="absolute top-1 right-1 w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-zinc-950/80 text-zinc-200 text-sm can-hover:opacity-0 can-hover:group-hover:opacity-100 hover:bg-zinc-800 transition-all"
         >
           +
         </Link>

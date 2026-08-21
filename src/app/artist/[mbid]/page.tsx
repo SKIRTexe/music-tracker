@@ -61,8 +61,8 @@ export default async function ArtistPage({
       </Link>
 
       {/* Header */}
-      <div className="flex items-center gap-5 mb-10">
-        <div className="shrink-0 w-28 h-28 rounded-full overflow-hidden bg-zinc-800">
+      <div className="flex items-center gap-4 sm:gap-5 mb-8 sm:mb-10">
+        <div className="shrink-0 w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-zinc-800">
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photo} alt={artist.name} className="w-full h-full object-cover" />
@@ -76,7 +76,7 @@ export default async function ArtistPage({
         </div>
 
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-zinc-100 leading-tight mb-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-zinc-100 leading-tight mb-1">
             {artist.name}
           </h1>
           <p className="text-xs text-zinc-600 mb-2">
@@ -113,7 +113,7 @@ export default async function ArtistPage({
             No albums found for this artist on MusicBrainz.
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
             {albums.map((album) => (
               <ResultCard
                 key={album.id}

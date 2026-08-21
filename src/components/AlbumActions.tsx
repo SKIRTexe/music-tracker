@@ -108,7 +108,7 @@ export function AlbumActions({
           step="0.1"
           value={rating}
           onChange={(e) => setRating(parseFloat(e.target.value))}
-          className="w-full accent-zinc-300 cursor-pointer"
+          className="w-full h-6 accent-zinc-300 cursor-pointer"
         />
         <div className="flex items-center gap-3 mt-2.5">
           <button

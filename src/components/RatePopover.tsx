@@ -60,7 +60,9 @@ export function RatePopover({
 
   return (
     <div
-      className={`z-30 w-44 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-3 ${className}`}
+      // max-w keeps it inside the viewport on a narrow phone, where a card is
+      // barely wider than the popover itself.
+      className={`z-30 w-44 max-w-[calc(100vw-1.5rem)] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-3 ${className}`}
     >
       <div className="flex flex-col gap-1 mb-3">
         {STATUSES.map((s) => (
@@ -95,7 +97,7 @@ export function RatePopover({
           value={rating}
           onChange={(e) => setRating(parseFloat(e.target.value))}
           aria-label={`Rating for ${item.title}`}
-          className="w-full accent-zinc-300 cursor-pointer"
+          className="w-full h-6 accent-zinc-300 cursor-pointer"
         />
         <button
           onClick={handleRate}

@@ -3,7 +3,32 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    /* Stop iOS inflating text when the phone is rotated to landscape. */
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-zinc-950 text-zinc-100;
+    /* The default grey flash on every tap looks broken on a dark UI. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Removes the ~300ms tap delay and stops double-tap zoom on controls. */
+  button,
+  a,
+  input,
+  select,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* A 16px font is the threshold below which iOS Safari zooms in on focus. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 }

@@ -79,8 +79,8 @@ export default async function AlbumPage({
         ← Search
       </Link>
 
-      <div className="flex flex-col sm:flex-row gap-6 mb-10">
-        <div className="shrink-0 w-44 h-44 rounded-lg overflow-hidden bg-zinc-800">
+      <div className="flex gap-4 sm:gap-6 mb-8 sm:mb-10">
+        <div className="shrink-0 w-28 h-28 sm:w-44 sm:h-44 rounded-lg overflow-hidden bg-zinc-800">
           {artworkUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artworkUrl} alt={album.title} className="w-full h-full object-cover" />
@@ -92,7 +92,7 @@ export default async function AlbumPage({
         </div>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold text-zinc-100 leading-snug mb-1">
+          <h1 className="text-lg sm:text-xl font-semibold text-zinc-100 leading-snug mb-1">
             {album.title}
           </h1>
           <p className="text-sm text-zinc-500 mb-3">
@@ -140,7 +140,7 @@ export default async function AlbumPage({
               Tracklist
             </h2>
             <p className="text-[10px] text-zinc-700">
-              {session?.user ? "Hover a track to rate it" : "Sign in to rate tracks"}
+              {session?.user ? "Tap + to rate a track" : "Sign in to rate tracks"}
             </p>
           </div>
           <div>

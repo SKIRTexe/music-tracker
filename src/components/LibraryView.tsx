@@ -80,8 +80,8 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
   return (
     <div>
       {/* Status tabs + sort */}
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-5 border-b border-zinc-800">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-end justify-between gap-2 mb-5 border-b border-zinc-800">
+        <div className="flex gap-1 overflow-x-auto max-w-full -mb-px">
           {FILTERS.map(({ key, label }) => {
             const count =
               key === "ALL" ? byType.length : byType.filter((e) => e.status === key).length;
@@ -89,7 +89,7 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
               <button
                 key={key}
                 onClick={() => setFilter(key)}
-                className={`px-3 py-2 text-xs transition-colors border-b-2 -mb-px ${
+                className={`px-3 py-2 text-xs whitespace-nowrap shrink-0 transition-colors border-b-2 ${
                   filter === key
                     ? "border-zinc-300 text-zinc-100"
                     : "border-transparent text-zinc-500 hover:text-zinc-300"
@@ -131,7 +131,7 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
       {sorted.length === 0 ? (
         <p className="text-zinc-600 text-sm py-8">Nothing here yet.</p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
           {sorted.map((entry) => (
             <LibraryItemCard key={entry.id} entry={entry} onRemove={handleRemove} />
           ))}
