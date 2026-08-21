@@ -154,6 +154,17 @@ To check hydration without a browser at hand, add a temporary client component w
 `--dump-dom` snapshot alone is not proof: Next's devtools overlay injects
 `nextjs-portal` even when app hydration has failed.
 
+## Deploys are automatic — with one caveat now handled
+
+Pushing to `main` triggers a Vercel deploy. Database changes are **not** automatic
+from a push alone, so `build` runs `prisma migrate deploy && next build`: adding a
+column and pushing now applies the migration before the new code goes live. Without
+that, a deploy would build cleanly and then fail at runtime on a column that does not
+exist yet. A failed migration fails the build, which is the safe direction.
+
+Supabase free projects pause after ~7 days idle; the first request after that errors
+until it is resumed from the dashboard.
+
 ## Songs have no stable id — read this before touching song code
 
 MusicBrainz models a **recording per release**, so one studio song has many recording
