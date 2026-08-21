@@ -8,11 +8,14 @@ export function SpotifyExport({
   configured,
   wantCount,
   notice,
+  syncFailed,
 }: {
   connected: boolean;
   configured: boolean;
   wantCount: number;
   notice?: string;
+  /** A background sync failed, so the playlist may not match Want to Listen. */
+  syncFailed?: boolean;
 }) {
   const [report, setReport] = useState<ExportReport | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -44,6 +47,12 @@ export function SpotifyExport({
     <div className="text-right">
       {notice && noticeText[notice] && (
         <p className="text-[11px] text-zinc-500 mb-1">{noticeText[notice]}</p>
+      )}
+
+      {connected && syncFailed && (
+        <p className="text-[11px] text-amber-500/90 mb-1">
+          Playlist may be out of date — a background sync failed. Sync to fix it.
+        </p>
       )}
 
       {!connected ? (

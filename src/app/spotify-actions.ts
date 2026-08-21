@@ -145,6 +145,8 @@ export async function exportWantToListen(): Promise<ExportReport> {
     }
 
     const alreadyPresent = [...desired.keys()].filter((uri) => inPlaylist.has(uri)).length;
+    // A successful manual sync clears any background-sync warning.
+    await prisma.user.update({ where: { id: userId }, data: { playlistSyncFailedAt: null } });
     revalidatePath("/library");
 
     const parts: string[] = [];

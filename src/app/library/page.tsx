@@ -16,7 +16,7 @@ export default async function LibraryPage({
   if (!session?.user?.id) redirect("/login");
   const { spotify: notice } = await searchParams;
 
-  const [entries, spotifyAccount] = await Promise.all([
+  const [entries, spotifyAccount, userRow] = await Promise.all([
     prisma.albumLog.findMany({
       where: { userId: session.user.id },
       orderBy: { addedAt: "desc" },
@@ -37,6 +37,10 @@ export default async function LibraryPage({
     prisma.account.findFirst({
       where: { userId: session.user.id, provider: "spotify" },
       select: { providerAccountId: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { playlistSyncFailedAt: true },
     }),
   ]);
 
@@ -63,6 +67,7 @@ export default async function LibraryPage({
           configured={spotifyConfigured()}
           wantCount={wantCount}
           notice={notice}
+          syncFailed={!!userRow?.playlistSyncFailedAt}
         />
       </div>
 

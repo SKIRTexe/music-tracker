@@ -167,7 +167,20 @@ until it is resumed from the dashboard.
 
 ## Spotify playlist sync
 
-The Want to Listen export is a two-way sync. `PlaylistTrack` records every track
+Want to Listen mirrors itself into the playlist. Adding an item queues its tracks;
+marking it Listened or deleting it removes them. Both run through `after()` from
+`next/server`, so the tap returns immediately rather than waiting on Spotify — a
+71-track box set would otherwise add about a second to a status change.
+
+Removal needs no catalogue lookup: `PlaylistTrack` already records which URIs came
+from which library row. Adding does need the tracklist fetched.
+
+A failed background sync sets `User.playlistSyncFailedAt`, and `/library` then warns
+that the playlist may be out of date. This is the point of the flag — a background
+sync that fails silently is worse than none, because you would trust a stale
+playlist. The Sync button remains as the reconciler and clears the flag.
+
+The export is also a two-way sync. `PlaylistTrack` records every track
 the app adds, so a sync can remove tracks whose library row left Want to Listen
 without touching tracks the user added to that playlist by hand — that distinction
 is the whole reason the table exists rather than diffing the playlist.

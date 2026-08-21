@@ -24,6 +24,10 @@ model User {
   /// Playlist synced by the Spotify export, so re-exporting updates it in place.
   spotifyPlaylistId String?
 
+  /// Set when a background playlist sync failed, so the library can warn that the
+  /// playlist may be out of date. Cleared by the next successful sync.
+  playlistSyncFailedAt DateTime?
+
   accounts       Account[]
   playlistTracks PlaylistTrack[]
   sessions Session[]
