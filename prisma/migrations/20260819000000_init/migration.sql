@@ -9,6 +9,7 @@ CREATE TABLE "User" (
     "bio" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "spotifyPlaylistId" TEXT,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );

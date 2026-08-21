@@ -92,6 +92,28 @@ If you change ranking, re-check these queries by hand — each catches a differe
 failure: `radiohead`, `beatles`, `the beatles`, `kendrick lamar`, `kid a`,
 `bohemian rhapsody`, `karma police`, `queen`.
 
+## Spotify export
+
+`/library` can push Want to Listen into one Spotify playlist. Albums are expanded to
+their full tracklists, because a playlist can only hold tracks. Re-exporting syncs
+the same playlist (id on `User.spotifyPlaylistId`) and skips URIs already in it, so
+anything you removed in Spotify stays removed.
+
+- `src/lib/spotify.ts` — OAuth, token refresh, search/match, playlist sync
+- `src/app/api/spotify/login|callback` — OAuth flow, with a state cookie for CSRF
+- `src/app/spotify-actions.ts` — `exportWantToListen()`, returns a match/miss report
+- Tokens live in the existing NextAuth `Account` table under `provider: "spotify"`,
+  so this needed no new table.
+
+Redirect URIs: Spotify **rejects `localhost`**. Use `http://127.0.0.1:3000/...`
+locally (loopback with an explicit port) or HTTPS in production. A LAN address like
+`http://192.168.1.x:3000` cannot be registered, so Spotify linking can't be done from
+a phone against the dev server — only via 127.0.0.1 or the deployed site.
+
+Matching is by text search against Spotify, so it won't find everything (obscure
+pressings, classical, MusicBrainz-only releases). Unmatched items are reported back
+rather than silently dropped — keep that behaviour.
+
 ## Testing on a phone: never bind dev to 0.0.0.0
 
 To reach the dev server from a phone, bind it to the machine's **LAN IP**:
