@@ -1,4 +1,5 @@
 import { getArtist, artistAlbums, CatalogNotFound } from "@/lib/catalog";
+import { cachedArtistGenres } from "@/lib/enrich";
 import { auth } from "@/lib/auth";
 import { getExistingEntries } from "@/lib/library";
 import { ResultCard } from "@/components/ResultCard";
@@ -30,7 +31,12 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [albums, session] = await Promise.all([artistAlbums(artist.id), auth()]);
+  // Spotify withdrew artist genres, so these come from the MusicBrainz cache.
+  const [albums, session, genres] = await Promise.all([
+    artistAlbums(artist.id),
+    auth(),
+    cachedArtistGenres(artist.id, artist.name),
+  ]);
   const existing = await getExistingEntries(session?.user?.id, albums.map((a) => a.id));
 
   return (
@@ -65,9 +71,9 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
               {artist.followers.toLocaleString("en-US")} followers
             </p>
           )}
-          {artist.genres.length > 0 && (
+          {genres.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {artist.genres.slice(0, 5).map((g) => (
+              {genres.slice(0, 5).map((g) => (
                 <span
                   key={g}
                   className="text-[10px] px-2 py-0.5 bg-zinc-800 rounded text-zinc-400 capitalize"

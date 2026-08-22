@@ -16,7 +16,7 @@ they are all documented in `ARCHIVE.md` and recoverable from the git tag
 - Deployed on Vercel
 
 ## MVP Surface
-Only 9 routes exist. Keep it that way unless a feature is being deliberately added.
+Only 10 routes exist. Keep it that way unless a feature is being deliberately added.
 
 - `/` — search landing; with `?q=` it becomes the results page
   (`&type=artists|albums|songs`, default shows all three)
@@ -24,6 +24,8 @@ Only 9 routes exist. Keep it that way unless a feature is being deliberately add
 - `/artist/[mbid]` — deliberately minimal: photo, name, genres, studio discography
   in chronological order. Each album is a `ResultCard`, so you can rate from here.
 - `/library` — your saved albums and songs, with filters and sorting
+- `/stats` — the charts, from the tracking data. `?range=30|90|365|all` scopes the
+  Activity section only
 - `/login`, `/register`, `/api/auth/*` — auth
 - `/api/artwork` — artwork fallback via iTunes: `?title=&artist=` for album covers,
   `?artist=` alone for an artist photo (MusicBrainz stores no artist images)
@@ -214,6 +216,135 @@ So **songs are identified by title+artist, not by id**:
 
 Without this you get two "Karma Police" rows in one library. The `mbid` column still
 holds whichever recording id it was first saved under — treat it as opaque for songs.
+
+## Tracking and metrics
+
+Every library action is recorded. `/stats` charts it; `getDashboard()` is the one
+call that assembles every metric.
+
+- `src/lib/tracking.ts` — the write side: `trackChange`, `trackRemoval`
+- `src/lib/enrich.ts` — genres, track count and runtime, filled in the background
+- `src/lib/stats.ts` — every metric, computed on demand
+- `src/app/stats-actions.ts` — `myStats()`, `backfillMyLibrary()`
+- `src/app/stats/page.tsx`, `src/components/charts/*`, `src/lib/viz.ts` — the dashboard
+
+Three rules, each of which will produce wrong numbers if broken:
+
+**1. `AlbumLog` is "now", `LibraryEvent` is "what happened".** Asking the wrong one
+gives a wrong answer, not a slow one. `AlbumLog` has no memory of a rating you
+changed or an item you deleted, so every timeseries, every former state and the
+whole backlog-conversion metric must come from the event log. Conversely the event
+log double-counts an item added, deleted and re-added, so current totals must come
+from `AlbumLog`.
+
+**2. One user action writes one event, carrying every delta.** Rating an album that
+was in Want to Listen moves both its rating and its status, and that is a single
+`RATED` event with `fromStatus: "WANT"`, `toStatus: "LISTENED"` — not two rows. So
+"when did things get listened to" filters on `toStatus`, *never* on `type`; filter
+by type and you miss every item rated straight from a search result. Re-tapping a
+status an item already has writes nothing, so the timeline has no phantom activity.
+
+**3. Tracking never breaks the action it observes.** Every function in
+`tracking.ts` and `enrich.ts` swallows its own errors to the server console. The
+worst case is a gap in the history; losing a rating to an analytics failure is not
+an acceptable trade.
+
+Genre is the one metric that cost something to get, and the reason MusicBrainz is
+back (see below). **Nothing on the add path knows an item's genre**: Spotify search
+results carry none and Spotify no longer returns artist genres at all, so the card
+the user tapped had no genre to hand. `enrichRow` fetches it after the fact, which
+is why it runs in `after()` alongside the playlist sync, and why genres are cached
+per artist in `ArtistMeta` (a library with thirty Radiohead items pays for one
+lookup, not thirty). It also backfills the genres onto events already written for
+that item, or the first event of every item's history — its `ADDED` — would be the
+one with no genre on it.
+
+Runtime and track count still come from Spotify, which does still have them.
+Enrichment costs about 7 seconds per new artist and 1 per already-known one; it is
+batched at 25 and must never be called from a page render.
+
+An item carries every genre its artist does, and Spotify gives Radiohead five, so
+genre shares deliberately sum to more than 1 and `minItems` exists to keep a genre
+held by one album out of a "best genre" ranking.
+
+Rows saved before this existed were backfilled by the migration, but only as far as
+the data allows: an old row has just `addedAt` and `updatedAt`, so it gets an
+`ADDED` event and, where `updatedAt` is provably later, one event for its last
+known change. Anything in between is unrecoverable and deliberately not invented.
+Their genres are empty until `backfillMyLibrary()` runs, which is batched at 25
+rows because each row costs a Spotify call.
+
+Timestamps bucket in **UTC**. Local-time buckets need the user's timezone, which
+nothing collects — so the dashboard says UTC rather than implying a "you listen at
+2am" that is really 9pm in New York.
+
+### The dashboard
+
+`/stats` renders `getDashboard()`. Four rules it is built on:
+
+**No chart library, and no client component.** Every mark is server-rendered. This
+app's worst failure mode is a page that looks perfect and does nothing because
+hydration died, and a dashboard whose numbers silently stop moving is worse than one
+that is visibly absent. The whole page works with JavaScript off.
+
+**Marks are HTML boxes; only line *paths* are SVG.** An SVG chart scaled to phone
+width scales its text down with it — a 10px axis label becomes 5px. HTML bars reflow
+instead and the labels stay real 10px text. The line chart's SVG therefore contains
+no text: strokes carry `vectorEffect="non-scaling-stroke"` so they stay 2px at any
+width, and the end-markers are positioned HTML elements, because
+`preserveAspectRatio="none"` would squash an SVG circle into an ellipse.
+
+**Every chart has a table twin** in a native `<details>`, so no value is reachable
+only by hovering. Native, again, so it cannot be broken by hydration.
+
+**The palette in `src/lib/viz.ts` is validated, not chosen.** Three categorical
+slots, one accent for magnitude, one four-step ordinal ramp — all checked against
+the card surface (`zinc-900`) for the lightness band, chroma floor, adjacent and
+all-pairs colourblind separation, and 3:1 contrast. Re-validate the set if you
+change a hex; do not eyeball it. Two rules ride along: nominal categories (genres,
+artists) get *one* colour, never a ramp — shading a bar by its own length burns the
+only free channel — and there is never a second y-axis. Average rating per decade
+sits in that chart's table for exactly that reason.
+
+Two traps already hit while building it:
+
+- A bar whose height is a percentage **collapses to nothing inside an auto-height
+  flex parent**. The column wrapper needs `h-full`. It fails silently — the chart
+  renders, axes and all, with slivers where the bars should be.
+- Counts need an **even** axis top, or a two-item chart draws ticks at 1 / 0.5 / 0.
+  `axisTop()` handles it; pass counts through it rather than `niceMax` directly.
+
+Screenshotting it: headless Chrome enforces a minimum window width and *crops* the
+image to `--window-size`, so a narrow shot looks like a layout overflow that isn't
+there. To check a real phone width, load the page in a 390px `<iframe>` and shoot
+the wrapper.
+
+### Spotify withdrew artist genres, so MusicBrainz is back for that one job
+
+`GET /artists/{id}` **no longer returns `genres`, `popularity` or `followers`** —
+the fields are absent from the payload, not empty. Verified directly against the
+API in August 2026. Nothing in the app can get a genre from Spotify any more.
+
+Two consequences worth knowing before you debug either:
+
+1. The genre chips on `/artist/[id]` and in `ArtistCard`, and the follower count on
+   `/artist/[id]`, all silently render nothing — they are null-guarded, so this
+   looked like an artist with no genres rather than a broken field. The artist
+   *page* now reads genres from the `ArtistMeta` cache instead. `ArtistCard` was
+   left alone: it fetches client-side and would need an API route for one line of
+   text.
+2. `src/lib/musicbrainz.ts` exists again — but **only** for genres, and only from
+   `after()`. It was removed as the *catalogue* because 1 request/second made
+   search take 17 seconds; none of that applies to a background lookup that runs
+   once per artist ever and is cached in `MbCache` and `ArtistMeta`. Do not call it
+   from a page render, and do not lower `MB_REQUEST_GAP_MS`. `MB_CONTACT` must be
+   real contact info or no request is made at all — MusicBrainz blocks fake
+   User-Agents, so sending one risks the deployment's IP.
+
+MusicBrainz genres come with vote counts, so the top 5 are the artist's actual main
+genres: Prince resolves to funk / pop / contemporary r&b / rock / funk rock. Names
+are quoted in the search query for the same Lucene reason the Spotify search needed
+it — unquoted, `artist:Kacey Musgraves` binds only "Kacey" to the field.
 
 ## Known Limitations
 - Songs are stored under a MusicBrainz *recording* id, which has no page of its own, so
