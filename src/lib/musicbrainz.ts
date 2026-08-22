@@ -124,22 +124,33 @@ type MbArtist = { genres?: { name: string; count?: number }[] };
  * genres. Names are quoted because MusicBrainz search is Lucene — unquoted,
  * `artist:Kacey Musgraves` binds only the first word to the field and matches
  * anything called "Kacey", which is the same trap the Spotify search hit.
+ *
+ * **Returns `null` when the question could not be asked** — no `MB_CONTACT`, a
+ * network failure, an HTTP error — as distinct from `[]`, which means
+ * MusicBrainz was asked and genuinely has no genres for this artist. Callers
+ * must not cache `null`. Collapsing the two is how an unset environment variable
+ * turns into every artist being permanently genre-less: the empty answer gets
+ * cached, and nothing ever asks again.
  */
-export async function artistGenresByName(name: string): Promise<string[]> {
+export async function artistGenresByName(name: string): Promise<string[] | null> {
   const trimmed = name.trim();
   if (!trimmed) return [];
+  if (!genresConfigured()) return null;
 
   try {
     const escaped = trimmed.replace(/["\\]/g, "\\$&");
     const query = encodeURIComponent(`artist:"${escaped}"`);
     const found = await mb<MbSearch>(`/artist?query=${query}&fmt=json&limit=1`);
-    const id = found?.artists?.[0]?.id;
+    if (!found) return null;
+
+    // Searched successfully, and MusicBrainz has no such artist. A real answer.
+    const id = found.artists?.[0]?.id;
     if (!id) return [];
 
     const artist = await mb<MbArtist>(`/artist/${id}?inc=genres&fmt=json`);
-    const genres = artist?.genres ?? [];
+    if (!artist) return null;
 
-    return [...genres]
+    return [...(artist.genres ?? [])]
       // Vote count first, then alphabetically so equal-vote genres keep a stable
       // order between runs.
       .sort((a, b) => (b.count ?? 0) - (a.count ?? 0) || a.name.localeCompare(b.name))
@@ -150,6 +161,6 @@ export async function artistGenresByName(name: string): Promise<string[]> {
       "MusicBrainz genre lookup failed:",
       err instanceof Error ? err.message : err
     );
-    return [];
+    return null;
   }
 }

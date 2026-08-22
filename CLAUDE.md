@@ -346,6 +346,20 @@ genres: Prince resolves to funk / pop / contemporary r&b / rock / funk rock. Nam
 are quoted in the search query for the same Lucene reason the Spotify search needed
 it — unquoted, `artist:Kacey Musgraves` binds only "Kacey" to the field.
 
+**`MB_CONTACT` has to be set on Vercel too, not just in `.env.local`.** Without it
+no request is attempted, and it fails *quietly*: the app looks healthy and every
+artist simply has no genres. Hit for real — the first production deploy had it
+locally and not on the host.
+
+That is also why `artistGenresByName` returns `null` for "could not ask" and `[]`
+for "asked, and there are none", and why **only `[]` is ever cached**. Collapsing
+the two is what turns one missing environment variable into every artist being
+permanently genre-less: the empty answer lands in `ArtistMeta` with a 30-day TTL
+and nothing asks again. For the same reason `enrichRow` only stamps `enrichedAt`
+once genres have actually answered — an enriched row is never revisited, so
+stamping it after a failed lookup would lose that item's genre for good while its
+runtime figures looked perfectly correct.
+
 ## Known Limitations
 - Songs are stored under a MusicBrainz *recording* id, which has no page of its own, so
   saved songs don't link anywhere. Song cards in search link to the album the song

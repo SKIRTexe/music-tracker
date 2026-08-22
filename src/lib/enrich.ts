@@ -31,7 +31,7 @@ const ARTIST_TTL_MS = 30 * 86_400_000;
 export async function artistGenres(
   artistId: string | null,
   artistName: string
-): Promise<string[]> {
+): Promise<string[] | null> {
   const key = artistId ?? `name:${artistName.trim().toLowerCase()}`;
 
   const cached = await prisma.artistMeta.findUnique({ where: { artistId: key } });
@@ -41,8 +41,14 @@ export async function artistGenres(
 
   const genres = await artistGenresByName(artistName);
 
-  // Cached even when empty: an artist MusicBrainz has no genres for should not be
-  // looked up again on every future save.
+  // Only a real answer gets cached. `null` means we never managed to ask, and
+  // writing an empty row for that would silence the retry for a month — which is
+  // exactly what happened in production the first time, when MB_CONTACT was unset
+  // on the host but present locally.
+  if (genres === null) return null;
+
+  // An empty *answer* is worth caching: an artist MusicBrainz has no genres for
+  // should not be looked up again on every future save.
   await prisma.artistMeta.upsert({
     where: { artistId: key },
     create: { artistId: key, name: artistName, genres, fetchedAt: new Date() },
@@ -115,10 +121,23 @@ export async function enrichRow(logId: string): Promise<boolean> {
       durationMs = sum > 0 ? sum : null;
     }
 
+    /*
+     * `enrichedAt` is only stamped once the genre lookup actually answered. A row
+     * marked enriched is never revisited, so stamping it after a failed lookup
+     * would leave that item permanently genre-less — the runtime figures would be
+     * right and the genre silently missing for ever. Leaving it null costs a
+     * repeat Spotify call on the next save and self-heals the moment MusicBrainz
+     * is reachable and configured.
+     */
     await prisma.albumLog.update({
       where: { id: logId },
-      data: { genres, trackCount, durationMs, enrichedAt: new Date() },
+      data: {
+        ...(genres === null ? {} : { genres, enrichedAt: new Date() }),
+        trackCount,
+        durationMs,
+      },
     });
+    if (genres === null) return false;
 
     /*
      * Backfill the events already written for this item. The ADDED event fires
