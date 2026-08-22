@@ -33,6 +33,7 @@ model User {
   sessions Session[]
   logs     AlbumLog[]
   reviews  Review[]
+  events   LibraryEvent[]
 }
 
 model Account {
@@ -91,11 +92,102 @@ model AlbumLog {
   addedAt     DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  /// Genres, snapshotted from the artist when the row was saved. Spotify returns
+  /// genres on artists but almost never on albums, so these are the artist's.
+  /// Denormalised on purpose: a genre breakdown must not need a catalogue call.
+  genres     String[]
+  /// Tracks and total runtime, so "hours of music" doesn't need a catalogue call.
+  /// Songs get 1 and their own length; albums get their tracklist's.
+  trackCount Int?
+  durationMs Int?
+  /// When the background enrichment last filled the three fields above.
+  enrichedAt DateTime?
+
+  // ── Lifecycle stamps ────────────────────────────────────────────────────────
+  // Derivable from LibraryEvent, but kept here so the common dashboard queries
+  // ("how long does my backlog sit?") are one indexed scan rather than a fold
+  // over the whole event log.
+
+  /// First time this entered Want to Listen.
+  wantedAt     DateTime?
+  /// First time this reached Listened.
+  listenedAt   DateTime?
+  firstRatedAt DateTime?
+  lastRatedAt  DateTime?
+  /// How many times a rating has been set — >1 means the user changed their mind.
+  ratingCount  Int      @default(0)
+
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviews Review[]
 
   @@unique([userId, mbid])
   @@index([userId, addedAt])
+  @@index([userId, status])
+  @@index([userId, listenedAt])
+}
+
+/// Append-only log of every library action: what changed, from what, to what, when.
+///
+/// The AlbumLog row only holds the *current* state, so on its own it cannot answer
+/// "when did this move to Listened" or "what did I rate this before I changed it".
+/// This table is the history, and it is deliberately never updated or deleted —
+/// removing an item writes a REMOVED event rather than erasing its past.
+///
+/// Item fields are snapshots, not a relation, for that reason: the events for a
+/// deleted row still have to read correctly.
+///
+/// One user action writes one event, carrying *every* delta it caused. Rating an
+/// unlistened album is a single RATED event with `toStatus = "LISTENED"` — so
+/// "when did things get listened to" is `toStatus = 'LISTENED'` across all types,
+/// not a per-type union.
+model LibraryEvent {
+  id     String @id @default(cuid())
+  userId String
+  /// ADDED | STATUS_CHANGED | RATED | RERATED | REMOVED
+  type   String
+
+  /// The AlbumLog row this concerned, while it exists. Not a foreign key: events
+  /// outlive their row.
+  logId       String?
+  mbid        String
+  itemType    String
+  title       String
+  artistName  String
+  artistId    String?
+  releaseYear Int?
+  genres      String[]
+
+  fromStatus String?
+  toStatus   String?
+  fromRating Float?
+  toRating   Float?
+
+  /// Days the item had been in Want to Listen, on the event that ended that wait.
+  /// Null on every other event.
+  waitDays Float?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, type, createdAt])
+  @@index([userId, mbid])
+  @@index([userId, toStatus, createdAt])
+}
+
+/// Artist genres, cached so enrichment costs one lookup per artist rather than one
+/// per saved item.
+///
+/// Genres come from MusicBrainz: Spotify withdrew artist `genres` entirely, and
+/// its album objects and search results never carried them. See `musicbrainz.ts`.
+model ArtistMeta {
+  /// Spotify artist id, or `name:<lowercased artist>` for rows saved before the
+  /// Spotify migration, which have no artist id.
+  artistId  String   @id
+  name      String
+  genres    String[]
+  fetchedAt DateTime @default(now())
 }
 
 /// Written reviews. No UI yet — see ARCHIVE.md section 10.

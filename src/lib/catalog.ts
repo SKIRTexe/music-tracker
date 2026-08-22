@@ -349,3 +349,30 @@ export async function artistAlbums(id: string, limit = 50): Promise<SearchItem[]
     return [];
   }
 }
+
+// ── Track ─────────────────────────────────────────────────────────────────────
+
+export interface TrackDetail {
+  id: string;
+  title: string;
+  artistName: string;
+  artistId?: string;
+  durationMs: number | null;
+  albumId: string | null;
+}
+
+/**
+ * One track. Only the tracking enrichment needs this — a saved song's runtime is
+ * not on any search result, and a song has no page of its own to fetch it from.
+ */
+export async function getTrack(id: string): Promise<TrackDetail> {
+  const t = await api<SpTrack>(`/tracks/${id}`);
+  return {
+    id: t.id,
+    title: t.name,
+    artistName: t.artists[0]?.name ?? "Unknown Artist",
+    artistId: t.artists[0]?.id,
+    durationMs: t.duration_ms ?? null,
+    albumId: t.album?.id ?? null,
+  };
+}
