@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { saveToLibrary, rateItem, removeFromLibrary, type LibraryItemInput } from "@/app/actions";
+import { RankFlow, useRankingMode } from "@/components/RankFlow";
 import type { ExistingEntry } from "@/lib/library";
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -32,6 +33,8 @@ export function RatePopover({
 }) {
   const [rating, setRating] = useState(saved?.rating ?? 7.0);
   const [isPending, startTransition] = useTransition();
+  const [flowOpen, setFlowOpen] = useState(false);
+  const mode = useRankingMode(item.itemType);
 
   const handleStatus = (status: string) => {
     onSaved({ status, rating: saved?.rating ?? null });
@@ -82,30 +85,59 @@ export function RatePopover({
       </div>
 
       <div className="border-t border-zinc-800 pt-2.5">
-        <div className="flex items-baseline justify-between mb-1.5">
-          <span className="text-[11px] text-zinc-500">Rate</span>
-          <span className="text-xs font-semibold text-zinc-200 tabular-nums">
-            {rating.toFixed(1)}
-            <span className="text-zinc-600 font-normal">/10</span>
-          </span>
-        </div>
-        <input
-          type="range"
-          min="0"
-          max="10"
-          step="0.1"
-          value={rating}
-          onChange={(e) => setRating(parseFloat(e.target.value))}
-          aria-label={`Rating for ${item.title}`}
-          className="w-full h-6 accent-zinc-300 cursor-pointer"
-        />
-        <button
-          onClick={handleRate}
-          disabled={isPending}
-          className="mt-2 w-full text-[11px] py-1.5 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
-        >
-          {isPending ? "Saving…" : saved?.rating != null ? "Update rating" : "Save rating"}
-        </button>
+        {/*
+         * Which control appears depends on the user's ranking setting, which is
+         * fetched rather than passed in so this stays drop-in on every surface.
+         * Until it arrives the slider shows — the same control as before, so the
+         * common case never waits on a request.
+         */}
+        {mode?.active ? (
+          <>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-[11px] text-zinc-500">Rate</span>
+              {saved?.rating != null && (
+                <span className="text-xs font-semibold text-zinc-200 tabular-nums">
+                  {saved.rating.toFixed(1)}
+                  <span className="text-zinc-600 font-normal">/10</span>
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setFlowOpen(true)}
+              disabled={isPending}
+              className="w-full text-[11px] py-1.5 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
+            >
+              {saved?.rating != null ? "Rate again" : "Rate by comparison"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-[11px] text-zinc-500">Rate</span>
+              <span className="text-xs font-semibold text-zinc-200 tabular-nums">
+                {rating.toFixed(1)}
+                <span className="text-zinc-600 font-normal">/10</span>
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="10"
+              step="0.1"
+              value={rating}
+              onChange={(e) => setRating(parseFloat(e.target.value))}
+              aria-label={`Rating for ${item.title}`}
+              className="w-full h-6 accent-zinc-300 cursor-pointer"
+            />
+            <button
+              onClick={handleRate}
+              disabled={isPending}
+              className="mt-2 w-full text-[11px] py-1.5 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
+            >
+              {isPending ? "Saving…" : saved?.rating != null ? "Update rating" : "Save rating"}
+            </button>
+          </>
+        )}
         {saved && (
           <button
             onClick={handleRemove}
@@ -116,6 +148,16 @@ export function RatePopover({
           </button>
         )}
       </div>
+      {flowOpen && (
+        <RankFlow
+          item={item}
+          onClose={() => {
+            setFlowOpen(false);
+            onClose();
+          }}
+          onRated={(next) => onSaved({ status: "LISTENED", rating: next })}
+        />
+      )}
     </div>
   );
 }

@@ -28,6 +28,10 @@ model User {
   /// playlist may be out of date. Cleared by the next successful sync.
   playlistSyncFailedAt DateTime?
 
+  /// Rate by comparing against what you've already rated, instead of picking a
+  /// number. See `src/lib/ranking.ts`.
+  rankingEnabled Boolean @default(false)
+
   accounts       Account[]
   playlistTracks PlaylistTrack[]
   sessions Session[]
@@ -117,6 +121,19 @@ model AlbumLog {
   /// How many times a rating has been set — >1 means the user changed their mind.
   ratingCount  Int      @default(0)
 
+  // ── Comparison ranking ──────────────────────────────────────────────────────
+  // When ranking is on, `rating` is *derived* from this item's place in the
+  // user's ladder rather than typed. `bucket` is the coarse band they put it in
+  // and `rankPosition` orders it within that band, higher being better. The
+  // order is the single source of truth; the score is a view of it.
+
+  /// LOVED | FINE | DISLIKED — null for items rated before ranking existed.
+  bucket       String?
+  rankPosition Float?
+  /// COMPARISON | MANUAL — whether the placement came from head-to-head
+  /// questions or from a number the user typed to override them.
+  ratingSource String   @default("MANUAL")
+
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviews Review[]
 
@@ -124,6 +141,7 @@ model AlbumLog {
   @@index([userId, addedAt])
   @@index([userId, status])
   @@index([userId, listenedAt])
+  @@index([userId, itemType, bucket, rankPosition])
 }
 
 /// Append-only log of every library action: what changed, from what, to what, when.

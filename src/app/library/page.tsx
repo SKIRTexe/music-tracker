@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { LibraryView } from "@/components/LibraryView";
 import { SpotifyExport } from "@/components/SpotifyExport";
+import { RankingToggle } from "@/components/RankingToggle";
+import { RANKING_MIN_RATED } from "@/lib/ranking";
 import { spotifyConfigured } from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +42,7 @@ export default async function LibraryPage({
     }),
     prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { playlistSyncFailedAt: true },
+      select: { playlistSyncFailedAt: true, rankingEnabled: true },
     }),
   ]);
 
@@ -68,6 +70,14 @@ export default async function LibraryPage({
           wantCount={wantCount}
           notice={notice}
           syncFailed={!!userRow?.playlistSyncFailedAt}
+        />
+      </div>
+
+      <div className="mb-5">
+        <RankingToggle
+          enabled={!!userRow?.rankingEnabled}
+          ratedAlbums={entries.filter((e) => e.itemType === "ALBUM" && e.rating != null).length}
+          minRated={RANKING_MIN_RATED}
         />
       </div>
 
