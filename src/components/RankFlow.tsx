@@ -149,9 +149,8 @@ export function RankFlow({
           <div>
             <p className="text-sm font-medium text-zinc-200">Set a score yourself</p>
             <p className="mt-1 text-[11px] leading-snug text-zinc-500">
-              This moves {item.title} to the place in your ranking that matches the number,
-              so the order and the scores stay in step. The final score can settle a
-              decimal away.
+              Your number is kept exactly, and moves {item.title} to the matching place in
+              your ranking. Albums you rate by comparison fill the gaps around it.
             </p>
             <div className="mt-4 flex items-baseline justify-between">
               <span className="text-[11px] text-zinc-500">Score</span>

@@ -188,8 +188,8 @@ export function AlbumActions({
 
         {mode?.active && (
           <p className="mt-2 text-[11px] leading-snug text-zinc-600">
-            A score here moves the album to the matching place in your ranking, so the
-            order and the numbers stay in step — it may settle a decimal away.
+            A score here is kept exactly, and moves the album to the matching place in
+            your ranking. Albums you rate by comparison fill the gaps around it.
           </p>
         )}
 

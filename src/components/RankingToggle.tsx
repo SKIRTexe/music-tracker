@@ -75,8 +75,8 @@ export function RankingToggle({
             </>
           ) : (
             <>
-              Your existing ratings set the starting order. Scores are derived from that
-              order now, so they can shift a little as you place more.
+              Your existing ratings are kept exactly and set the starting order. Albums
+              you compare from now on slot in between them.
             </>
           )}
         </p>

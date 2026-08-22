@@ -375,13 +375,22 @@ is not.
 - `src/app/actions.ts` — `setRankingEnabled`, `getComparisonSetup`,
   `rateByComparison`, `rateByNumber`, `rankingMode`
 
-**The order is the only source of truth; the score is a view of it.** Every score
-comes from `bucket` + `rankPosition`. Nothing writes a rating directly while
-ranking is on — not even an override, which works by *moving the item* to the slot
-matching the number typed. So the list and the scores cannot contradict each other,
-because there is only one thing to contradict. The consequence to keep in mind is
-that an override's displayed score can settle a decimal from what was typed; the
-position is what was actually being expressed.
+**The order decides who is above whom; typed numbers are anchors the rest are
+derived around.** An item rated by comparison has no number of its own — it takes
+one from the gap between the nearest manually-set scores above and below it (or
+the band edges). An item whose score was typed keeps that score exactly, for ever,
+until it is re-rated.
+
+The first version derived *every* score from slot position, which is wrong on a
+small library and was shipped before it was caught: a bucket holding one album has
+exactly one slot, so every number from 6.8 to 10 produced the same 8.4 and the
+slider was visibly inert. `deriveBucketScores` is the fix, and the reason
+`placeItem` takes an `exactScore` — the typed number has to be written *before*
+the re-score, or the recompute derives a score from the slot and overwrites the
+very number being set.
+
+A useful consequence: turning the toggle on no longer rewrites any existing
+rating. Seeded items are manual, so they are all anchors.
 
 Albums and songs are separate ladders. "Is Kid A better than Karma Police" has no
 honest answer, and the dashboard already reports the two averages separately.
