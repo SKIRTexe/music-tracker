@@ -500,6 +500,8 @@ export async function rateByNumber(
     bucket: slot.bucket,
     insertIndex: slot.insertIndex,
     source: "MANUAL",
+    // Kept exactly, and anchors the derived scores on either side of it.
+    exactScore: clamped,
   });
 
   queueBackground({

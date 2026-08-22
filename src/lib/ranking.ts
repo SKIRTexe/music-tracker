@@ -3,17 +3,18 @@ import { prisma } from "@/lib/prisma";
 /**
  * Comparison ranking — the Beli model.
  *
- * You never type a score. You put an item in one of three coarse buckets, answer
+ * You needn't type a score. You put an item in one of three coarse buckets, answer
  * a few "which did you like more?" questions against things you've already rated,
  * and the 0–10 number is *derived* from where you landed. Comparing two records
  * you know is a question you can answer honestly; "is this a 7.4 or a 7.8" is not,
  * which is the whole point.
  *
- * **The order is the single source of truth and the score is a view of it.** Every
- * score comes from `bucket` + `rankPosition`. Nothing writes a rating directly
- * while ranking is on — not even an override, which works by moving the item to
- * the slot matching the number you typed. Two things can therefore never
- * contradict each other, because there is only one thing.
+ * **The order decides who is above whom; typed numbers are anchors the rest are
+ * derived around.** A comparison-rated item has no number of its own — it takes
+ * one from the gap between the nearest typed scores above and below it. A typed
+ * score is kept exactly, so overriding does what it says while still moving the
+ * item to the matching place in the ladder. Order and numbers therefore agree,
+ * without the numbers being fictional.
  *
  * Albums and songs are separate ladders. "Is Kid A better than Karma Police" is
  * not a question with an honest answer, and the dashboard reports album and song
@@ -78,6 +79,69 @@ export function scoreFor(bucket: Bucket, index: number, count: number): number {
   return round1(top - (index * (top - bottom)) / (count - 1));
 }
 
+/**
+ * Every score in one bucket, best first.
+ *
+ * `anchors[i]` is the exact score of a manually-set item, or null for one placed
+ * by comparison.
+ *
+ * **A typed score is kept exactly.** Deriving it from the slot instead makes the
+ * slider inert on a small library: a bucket holding one album has exactly one
+ * slot, so every number from 6.8 to 10 produced the same 8.4. Comparison-rated
+ * items then spread through the gaps *between* anchors, which keeps the ladder
+ * and the numbers agreeing — the order still decides who is above whom, the
+ * anchors only decide what the numbers on either side have room to be.
+ *
+ * With no anchors at all this is the plain band spread, so an untouched bucket
+ * behaves exactly as before and its best item can still be a 10.
+ */
+export function deriveBucketScores(bucket: Bucket, anchors: (number | null)[]): number[] {
+  const n = anchors.length;
+  const { low, high } = BANDS[bucket];
+  if (n === 0) return [];
+  if (anchors.every((a) => a === null)) {
+    return anchors.map((_, i) => scoreFor(bucket, i, n));
+  }
+
+  const out = new Array<number>(n);
+  anchors.forEach((a, i) => {
+    if (a !== null) out[i] = round1(Math.min(high, Math.max(low, a)));
+  });
+
+  let i = 0;
+  while (i < n) {
+    if (anchors[i] !== null) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < n && anchors[j] === null) j++;
+
+    const run = j - i;
+    const above = i > 0 ? out[i - 1] : null;
+    const below = j < n ? out[j] : null;
+
+    for (let k = 0; k < run; k++) {
+      let score: number;
+      if (above === null && below === null) score = scoreFor(bucket, k, run);
+      // Open at the anchored end, closed at the band edge, so the top of a
+      // bucket can still reach 10 and the bottom can still reach the floor.
+      else if (above === null) score = high - (high - below!) * (k / run);
+      else if (below === null) score = above - (above - low) * ((k + 1) / run);
+      else score = above - (above - below) * ((k + 1) / (run + 1));
+      out[i + k] = round1(score);
+    }
+    i = j;
+  }
+
+  // Rounding can nudge a derived score above the one before it. Anchors are left
+  // alone — they are what the user actually said.
+  for (let k = 1; k < n; k++) {
+    if (anchors[k] === null && out[k] > out[k - 1]) out[k] = out[k - 1];
+  }
+  return out;
+}
+
 /** Which bucket a typed score belongs to — the override path. */
 export function bucketForScore(score: number): Bucket {
   if (score <= BANDS.DISLIKED.high) return "DISLIKED";
@@ -93,6 +157,8 @@ export type LadderItem = {
   coverUrl: string | null;
   bucket: Bucket;
   rating: number | null;
+  /** COMPARISON items float; MANUAL ones anchor the scores around them. */
+  source: string;
 };
 
 const LADDER_SELECT = {
@@ -104,6 +170,7 @@ const LADDER_SELECT = {
   bucket: true,
   rankPosition: true,
   rating: true,
+  ratingSource: true,
 } as const;
 
 /**
@@ -138,6 +205,7 @@ export async function bucketItems(
     coverUrl: r.coverUrl,
     bucket: r.bucket as Bucket,
     rating: r.rating,
+    source: r.ratingSource,
   }));
 }
 
@@ -169,12 +237,17 @@ export async function recomputeBucket(
   if (items.length === 0) return;
 
   const count = items.length;
+  const scores = deriveBucketScores(
+    bucket,
+    items.map((item) => (item.source === "MANUAL" ? item.rating : null))
+  );
+
   await prisma.$transaction(
     items.map((item, index) =>
       prisma.albumLog.update({
         where: { id: item.id },
         // Highest position is best, so the top of the list gets the largest.
-        data: { rating: scoreFor(bucket, index, count), rankPosition: count - 1 - index },
+        data: { rating: scores[index], rankPosition: count - 1 - index },
       })
     )
   );
@@ -207,8 +280,16 @@ export async function placeItem(params: {
   bucket: Bucket;
   insertIndex: number;
   source: "COMPARISON" | "MANUAL";
+  /**
+   * The number the user typed, for a MANUAL placement.
+   *
+   * Written before the re-score so it is already there to anchor against —
+   * without it the recompute would derive a score from the slot and overwrite
+   * the very number being set.
+   */
+  exactScore?: number;
 }): Promise<number | null> {
-  const { userId, logId, itemType, bucket, insertIndex, source } = params;
+  const { userId, logId, itemType, bucket, insertIndex, source, exactScore } = params;
 
   const others = await bucketItems(userId, itemType, bucket, logId);
   const positions = await prisma.albumLog
@@ -227,6 +308,7 @@ export async function placeItem(params: {
       bucket,
       rankPosition: positionAt(others, clamped, positions),
       ratingSource: source,
+      ...(exactScore != null ? { rating: exactScore } : {}),
     },
   });
 
@@ -242,10 +324,9 @@ export async function placeItem(params: {
 /**
  * The slot a typed score corresponds to — how an override finds its place.
  *
- * The item goes above everything it out-scores, so the ladder stays consistent
- * with the number the user had in mind. The score it finally shows comes from
- * that slot, so it can settle a decimal away from what was typed; the order is
- * what was actually being expressed.
+ * The item goes above everything it out-scores, so the ladder agrees with the
+ * number the user had in mind. The number itself is then kept exactly, as an
+ * anchor — see `deriveBucketScores`.
  */
 export async function slotForScore(
   userId: string,
