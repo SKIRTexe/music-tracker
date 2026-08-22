@@ -393,6 +393,13 @@ their own band. Small buckets use a narrow window around the band's midpoint and
 widen as they fill (`FULL_SPREAD_AT`) — otherwise your second loved album scores
 6.8, a chasm away from a record you said you loved.
 
+The slider stays on the album page even with ranking on, and writes through
+`rateByNumber` rather than `rateItem` — a direct write would leave a score its
+ladder position disagrees with, which is the one thing the model exists to
+prevent. The album page is where you reconsider a record you already know, and
+re-answering a ladder of comparisons to nudge a score is the wrong tool for that.
+The compact popover on cards stays comparison-only.
+
 Comparisons only start after `RANKING_MIN_RATED` (2) rated items of that type;
 below that there is nothing to compare against, so rating stays a slider and those
 first few seed the ladder.
