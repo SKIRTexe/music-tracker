@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { saveToLibrary, rateItem, removeFromLibrary, type LibraryItemInput } from "@/app/actions";
+import { RankFlow, useRankingMode } from "@/components/RankFlow";
 
 const STATUSES = [
   ["LISTENED", "Listened"],
@@ -36,6 +37,9 @@ export function AlbumActions({
   const [status, setStatus] = useState<string | null>(initialStatus);
   const [rating, setRating] = useState(initialRating ?? 7.0);
   const [isPending, startTransition] = useTransition();
+  const [rated, setRated] = useState<number | null>(initialRating);
+  const [flowOpen, setFlowOpen] = useState(false);
+  const mode = useRankingMode("ALBUM");
 
   if (!isLoggedIn) {
     return (
@@ -96,27 +100,42 @@ export function AlbumActions({
       <div className="border-t border-zinc-800 pt-4">
         <div className="flex items-baseline justify-between mb-2">
           <span className="text-xs text-zinc-500 uppercase tracking-widest">Your rating</span>
-          <span className="text-sm font-semibold text-zinc-200 tabular-nums">
-            {rating.toFixed(1)}
-            <span className="text-zinc-600 text-xs font-normal"> /10</span>
-          </span>
+          {(!mode?.active || rated != null) && (
+            <span className="text-sm font-semibold text-zinc-200 tabular-nums">
+              {(mode?.active ? (rated as number) : rating).toFixed(1)}
+              <span className="text-zinc-600 text-xs font-normal"> /10</span>
+            </span>
+          )}
         </div>
-        <input
-          type="range"
-          min="0"
-          max="10"
-          step="0.1"
-          value={rating}
-          onChange={(e) => setRating(parseFloat(e.target.value))}
-          className="w-full h-6 accent-zinc-300 cursor-pointer"
-        />
+
+        {/* Comparison rating replaces the slider outright — see RankFlow. */}
+        {!mode?.active && (
+          <input
+            type="range"
+            min="0"
+            max="10"
+            step="0.1"
+            value={rating}
+            onChange={(e) => setRating(parseFloat(e.target.value))}
+            className="w-full h-6 accent-zinc-300 cursor-pointer"
+          />
+        )}
+
         <div className="flex items-center gap-3 mt-2.5">
           <button
-            onClick={handleRate}
+            onClick={() => (mode?.active ? setFlowOpen(true) : handleRate())}
             disabled={isPending}
             className="text-xs px-3 py-1.5 bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors disabled:opacity-40"
           >
-            {isPending ? "Saving…" : initialRating != null ? "Update rating" : "Save rating"}
+            {mode?.active
+              ? rated != null
+                ? "Rate again"
+                : "Rate by comparison"
+              : isPending
+                ? "Saving…"
+                : initialRating != null
+                  ? "Update rating"
+                  : "Save rating"}
           </button>
           {status && (
             <button
@@ -128,7 +147,25 @@ export function AlbumActions({
             </button>
           )}
         </div>
+
+        {mode?.enabled && !mode.active && mode.needed > 0 && (
+          <p className="mt-2 text-[11px] text-zinc-600">
+            Rate {mode.needed} more album{mode.needed === 1 ? "" : "s"} and rating switches
+            to comparisons.
+          </p>
+        )}
       </div>
+
+      {flowOpen && (
+        <RankFlow
+          item={item}
+          onClose={() => setFlowOpen(false)}
+          onRated={(next) => {
+            setRated(next);
+            setStatus("LISTENED");
+          }}
+        />
+      )}
     </div>
   );
 }

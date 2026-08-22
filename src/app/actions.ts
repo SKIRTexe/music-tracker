@@ -8,6 +8,17 @@ import { revalidatePath } from "next/cache";
 import { syncItemAdded, syncItemRemoved } from "@/lib/playlist-sync";
 import { enrichRow } from "@/lib/enrich";
 import { trackChange, trackRemoval, type PriorState, type TrackedItem } from "@/lib/tracking";
+import {
+  BUCKETS,
+  BUCKET_LABELS,
+  bucketItems,
+  ensureSeeded,
+  placeItem,
+  rankingState,
+  slotForScore,
+  type Bucket,
+  type LadderItem,
+} from "@/lib/ranking";
 
 /** Everything needed to create a library row for an album or a song. */
 export type LibraryItemInput = {
@@ -315,4 +326,207 @@ export async function removeFromLibrary(
   }
 
   refresh();
+}
+
+// ── Comparison ranking ────────────────────────────────────────────────────────
+
+/**
+ * Turn comparison rating on or off.
+ *
+ * Enabling seeds the ladder from whatever is already rated, so existing opinions
+ * become the starting order rather than being thrown away.
+ */
+export async function setRankingEnabled(enabled: boolean): Promise<void> {
+  const userId = await requireUserId();
+  await prisma.user.update({ where: { id: userId }, data: { rankingEnabled: enabled } });
+  if (enabled) {
+    await ensureSeeded(userId, "ALBUM", true);
+    await ensureSeeded(userId, "SONG", true);
+  }
+  refresh();
+}
+
+/** Everything the comparison modal needs to run the whole flow client-side. */
+export type ComparisonSetup = {
+  active: boolean;
+  /** How many more items must be rated before comparisons begin. */
+  needed: number;
+  buckets: { bucket: Bucket; label: string; items: LadderItem[] }[];
+};
+
+/**
+ * The candidate lists, sent in one go.
+ *
+ * The binary search then runs entirely in the client: no round trip per question,
+ * so answering feels instant. A stale list costs nothing — the final placement is
+ * resolved and re-scored on the server regardless.
+ */
+export async function getComparisonSetup(item: LibraryItemInput): Promise<ComparisonSetup> {
+  const userId = await requireUserId();
+  const state = await rankingState(userId, item.itemType);
+  if (!state.active) return { active: false, needed: state.needed, buckets: [] };
+
+  await ensureSeeded(userId, item.itemType);
+
+  // The item being rated must not appear in its own comparison list.
+  const existingSongId = await findExistingSongId(userId, item);
+  const self =
+    existingSongId ??
+    (
+      await prisma.albumLog.findUnique({
+        where: { userId_mbid: { userId, mbid: item.mbid } },
+        select: { id: true },
+      })
+    )?.id;
+
+  const buckets = [];
+  for (const bucket of BUCKETS) {
+    buckets.push({
+      bucket,
+      label: BUCKET_LABELS[bucket],
+      items: await bucketItems(userId, item.itemType, bucket, self ?? undefined),
+    });
+  }
+  return { active: true, needed: 0, buckets };
+}
+
+/**
+ * Write the row this rating belongs to, without touching the score.
+ *
+ * Rating implies listening, exactly as the typed path does. The score is set
+ * afterwards by the placement, so it is never written twice.
+ */
+async function upsertForRanking(
+  userId: string,
+  item: LibraryItemInput,
+  existingSongId: string | null
+): Promise<{ id: string }> {
+  if (existingSongId) {
+    return prisma.albumLog.update({
+      where: { id: existingSongId },
+      data: { status: "LISTENED", coverUrl: item.coverUrl ?? undefined },
+      select: { id: true },
+    });
+  }
+  return prisma.albumLog.upsert({
+    where: { userId_mbid: { userId, mbid: item.mbid } },
+    create: {
+      userId,
+      mbid: item.mbid,
+      itemType: item.itemType,
+      albumTitle: item.title,
+      artistName: item.artistName,
+      parentAlbum: item.parentAlbum ?? null,
+      status: "LISTENED",
+      releaseYear: item.releaseYear ?? null,
+      coverUrl: item.coverUrl ?? null,
+      artistMbid: item.artistMbid ?? null,
+    },
+    update: {
+      status: "LISTENED",
+      coverUrl: item.coverUrl ?? undefined,
+      artistMbid: item.artistMbid ?? undefined,
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * Rate by where the comparisons landed. Returns the derived score.
+ *
+ * `insertIndex` is the slot in the bucket the client's binary search arrived at,
+ * 0 being the top. The server re-resolves and re-scores from it, so a client
+ * working from a slightly stale list still produces a correct ladder.
+ */
+export async function rateByComparison(
+  item: LibraryItemInput,
+  bucket: Bucket,
+  insertIndex: number
+): Promise<number | null> {
+  const userId = await requireUserId();
+
+  const existingSongId = await findExistingSongId(userId, item);
+  const prior = await loadPrior(userId, item, existingSongId);
+  const row = await upsertForRanking(userId, item, existingSongId);
+
+  await ensureSeeded(userId, item.itemType);
+  const rating = await placeItem({
+    userId,
+    logId: row.id,
+    itemType: item.itemType,
+    bucket,
+    insertIndex,
+    source: "COMPARISON",
+  });
+
+  queueBackground({
+    userId,
+    logId: row.id,
+    item,
+    prior,
+    next: { status: "LISTENED", rating },
+    syncMbid: prior?.mbid ?? item.mbid,
+  });
+
+  refresh();
+  return rating;
+}
+
+/**
+ * Override with a number, while ranking is on.
+ *
+ * The number is not stored as the score — it picks the slot. The item slides to
+ * where it out-scores everything below it and the bucket is re-derived from
+ * there, so the order and the scores can never disagree. The score shown may
+ * therefore land a decimal off what was typed; the position is the real opinion.
+ */
+export async function rateByNumber(
+  item: LibraryItemInput,
+  score: number
+): Promise<number | null> {
+  const userId = await requireUserId();
+  const clamped = Math.round(Math.min(10, Math.max(0, score)) * 10) / 10;
+
+  const existingSongId = await findExistingSongId(userId, item);
+  const prior = await loadPrior(userId, item, existingSongId);
+  const row = await upsertForRanking(userId, item, existingSongId);
+
+  await ensureSeeded(userId, item.itemType);
+  const slot = await slotForScore(userId, item.itemType, row.id, clamped);
+  const rating = await placeItem({
+    userId,
+    logId: row.id,
+    itemType: item.itemType,
+    bucket: slot.bucket,
+    insertIndex: slot.insertIndex,
+    source: "MANUAL",
+  });
+
+  queueBackground({
+    userId,
+    logId: row.id,
+    item,
+    prior,
+    next: { status: "LISTENED", rating },
+    syncMbid: prior?.mbid ?? item.mbid,
+  });
+
+  refresh();
+  return rating;
+}
+
+/**
+ * Whether comparison rating applies, without the candidate payload.
+ *
+ * Called by the rate controls to decide which rating UI to show, so it stays
+ * cheap: one user lookup and one count. Returns inactive rather than redirecting
+ * when signed out — a rating control that is never reachable anyway.
+ */
+export async function rankingMode(
+  itemType: string
+): Promise<{ enabled: boolean; active: boolean; needed: number }> {
+  const session = await auth();
+  if (!session?.user?.id) return { enabled: false, active: false, needed: 0 };
+  const state = await rankingState(session.user.id, itemType);
+  return { enabled: state.enabled, active: state.active, needed: state.needed };
 }

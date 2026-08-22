@@ -35,7 +35,8 @@ Only 10 routes exist. Keep it that way unless a feature is being deliberately ad
 - `src/lib/musicbrainz.ts` — request queue, cache, album and artist lookups
 - `src/lib/artwork.ts` — iTunes → Cover Art Archive artwork resolution, memoised
 - `src/lib/library.ts` — `getExistingEntries`, so cards show what you've already saved
-- `src/app/actions.ts` — the only mutations: `saveToLibrary`, `rateItem`, `removeFromLibrary`
+- `src/app/actions.ts` — the only mutations: `saveToLibrary`, `rateItem`,
+  `removeFromLibrary`, plus the comparison-ranking writes
 - `src/components/ResultCard.tsx` — a search hit (album or song), add/rate popover,
   and the hold-to-rate gesture (550ms, cancelled past 8px of movement)
 - `src/components/ArtistCard.tsx` — an artist hit; photo is fetched client-side
@@ -359,6 +360,69 @@ and nothing asks again. For the same reason `enrichRow` only stamps `enrichedAt`
 once genres have actually answered — an enriched row is never revisited, so
 stamping it after a failed lookup would lose that item's genre for good while its
 runtime figures looked perfectly correct.
+
+## Comparison ranking (the Beli model)
+
+Optional, per user, toggled on `/library`. When it is on, **you never type a score.**
+You put the item in one of three coarse buckets, answer a few "which did you like
+more?" questions, and the number is derived from where it landed. Comparing two
+records you know is a question you can answer honestly; "is this a 7.4 or a 7.8"
+is not.
+
+- `src/lib/ranking.ts` — bands, score derivation, placement, seeding
+- `src/components/RankFlow.tsx` — the modal, and `useRankingMode`
+- `src/components/RankingToggle.tsx` — the switch
+- `src/app/actions.ts` — `setRankingEnabled`, `getComparisonSetup`,
+  `rateByComparison`, `rateByNumber`, `rankingMode`
+
+**The order is the only source of truth; the score is a view of it.** Every score
+comes from `bucket` + `rankPosition`. Nothing writes a rating directly while
+ranking is on — not even an override, which works by *moving the item* to the slot
+matching the number typed. So the list and the scores cannot contradict each other,
+because there is only one thing to contradict. The consequence to keep in mind is
+that an override's displayed score can settle a decimal from what was typed; the
+position is what was actually being expressed.
+
+Albums and songs are separate ladders. "Is Kid A better than Karma Police" has no
+honest answer, and the dashboard already reports the two averages separately.
+
+**Scores live in bands, not on one global scale**: loved 6.8–10, fine 3.4–6.7,
+disliked 0–3.3. One global scale would mean adding an album you loved could drag a
+merely-fine album into a different verdict. A bucket's items only ever move within
+their own band. Small buckets use a narrow window around the band's midpoint and
+widen as they fill (`FULL_SPREAD_AT`) — otherwise your second loved album scores
+6.8, a chasm away from a record you said you loved.
+
+Comparisons only start after `RANKING_MIN_RATED` (2) rated items of that type;
+below that there is nothing to compare against, so rating stays a slider and those
+first few seed the ladder.
+
+Five things that will bite:
+
+1. **The ladder inverts if you seed it in the wrong direction.** `ensureSeeded`
+   assigns positions -1, -2, -3… walking *best first*. Iterating worst-first gives
+   the highest position to whichever row is handled first — which is the worst one
+   — and silently reverses every ranking. Caught by test, not by reading.
+2. **`recomputeBucket` writes `rating` directly and logs no events, deliberately.**
+   A score that moved because a *different* album was placed above it is not an
+   opinion change, and logging those would drown the real ones in the activity
+   feed. Only the item actually being placed gets an event.
+3. **Positions are renormalised to integers on every recompute.** Inserting at the
+   midpoint between neighbours halves the gap each time; without renormalising, a
+   few dozen inserts into the same spot would exhaust float precision. It is free
+   here because the rows are already being written.
+4. **Never import a value from `lib/ranking` into a client component.** It imports
+   prisma. `RankingToggle` takes the threshold as a prop for exactly this reason;
+   `RankFlow` imports only *types* from it.
+5. **Turning the toggle on re-seeds from current ratings** rather than only filling
+   gaps, so slider ratings made while it was off are absorbed. Not destructive:
+   scores descend with position, so rebuilding from scores reproduces the same
+   order.
+
+The binary search runs entirely in the client — every candidate is sent once when
+the modal opens, so answering a question needs no request. The final slot is
+submitted once and re-scored server-side, so a stale candidate list cannot corrupt
+the ladder. Worst case is 6 questions for a 40-item bucket.
 
 ## Known Limitations
 - Songs are stored under a MusicBrainz *recording* id, which has no page of its own, so
