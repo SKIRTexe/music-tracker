@@ -36,10 +36,24 @@ export function RatePopover({
   const [flowOpen, setFlowOpen] = useState(false);
   const mode = useRankingMode(item.itemType);
 
+  /**
+   * Marking something Listened is the moment you have an opinion about it, so
+   * that is when to ask for one.
+   *
+   * Only for a first rating — re-marking something already rated as Listened is
+   * not a request to re-rate it, and prompting then is nagging. The prompt opens
+   * *after* the status write lands rather than alongside it: both paths upsert
+   * the same row, and firing them together races two writes at one record.
+   */
   const handleStatus = (status: string) => {
     onSaved({ status, rating: saved?.rating ?? null });
-    onClose();
-    startTransition(async () => { await saveToLibrary(item, status); });
+    const promptToRate = status === "LISTENED" && saved?.rating == null;
+    if (!promptToRate) onClose();
+
+    startTransition(async () => {
+      await saveToLibrary(item, status);
+      if (promptToRate) setFlowOpen(true);
+    });
   };
 
   const handleRate = () => {
