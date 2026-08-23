@@ -392,6 +392,16 @@ blank page, which reads as broken.
 `setStatsHidden` takes the entire list rather than one id, so two switches flipped
 quickly cannot race into a lost update.
 
+Marking something **Listened** from the card popover opens the rate prompt, for a
+first rating only — re-marking an already-rated item is not a request to re-rate
+it. The prompt opens *after* the status write lands: both paths upsert the same
+row, and firing them together races two writes at one record. The prompt carries
+the buckets with the slider beneath them, so neither path is hidden behind the
+other, and an X because rating is a prompt and not a demand — the status change
+is already saved by then. With ranking off it degrades to the slider alone, and
+writes through `rateItem` rather than `rateByNumber` so it does not start
+building a ladder for someone who never opted in.
+
 **The switch knob needs an explicit `left-0`.** It is absolutely positioned inside
 the track and moved with `translate-x`, and without `left-0` its start position
 comes from the button's UA `text-align: center` — so it begins near the middle and
