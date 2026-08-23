@@ -7,14 +7,15 @@ import { LibraryItemCard, type LibraryEntry } from "@/components/LibraryItemCard
 
 export type { LibraryEntry };
 
-type Filter = "ALL" | "LISTENED" | "LISTENING" | "WANT";
+import type { Status } from "@/lib/statuses";
+
+type Filter = "ALL" | Status;
 type TypeFilter = "ALL" | "ALBUM" | "SONG";
 type Sort = "added_desc" | "added_asc" | "rating_desc" | "rating_asc" | "title_asc";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "ALL", label: "All" },
   { key: "LISTENED", label: "Listened" },
-  { key: "LISTENING", label: "Listening" },
   { key: "WANT", label: "Want to Listen" },
 ];
 
@@ -80,10 +81,11 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
   return (
     <div>
       {/*
-        Status is a native select on phones and a tab bar from sm up. The four tab
-        labels come to roughly 400px of text, which is wider than an iPhone's usable
-        width, so the last one sat off-screen behind a horizontal scroll that iOS
-        renders no visible hint for.
+        Status is a native select on phones and a tab bar from sm up. The tab labels
+        came to roughly 400px of text back when there were four of them, which is
+        wider than an iPhone's usable width, so the last one sat off-screen behind a
+        horizontal scroll that iOS renders no visible hint for. Three fit, but the
+        select stays: it is the better control on a phone regardless.
       */}
       <div className="sm:hidden mb-5 flex flex-col gap-2">
         <select

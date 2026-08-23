@@ -96,7 +96,7 @@ model AlbumLog {
   releaseYear Int?
   coverUrl    String?
   artistMbid  String?
-  status      String   @default("LISTENED") // LISTENED | LISTENING | WANT
+  status      String   @default("LISTENED") // LISTENED | WANT
   rating      Float? // 1.0 – 10.0
   addedAt     DateTime @default(now())
   updatedAt   DateTime @updatedAt
