@@ -7,6 +7,14 @@ import { spotifyConfigured } from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
 
+/** Result of the Spotify OAuth round trip, surfaced on return to this page. */
+const NOTICE_TEXT: Record<string, string> = {
+  linked: "Spotify connected.",
+  denied: "Spotify connection cancelled.",
+  badstate: "Connection failed a security check — please try again.",
+  failed: "Could not connect to Spotify. Please try again.",
+};
+
 export default async function LibraryPage({
   searchParams,
 }: {
@@ -62,16 +70,33 @@ export default async function LibraryPage({
           </p>
         </div>
 
-        <SpotifyExport
-          connected={!!spotifyAccount}
-          configured={spotifyConfigured()}
-          wantCount={wantCount}
-          notice={notice}
-          syncFailed={!!userRow?.playlistSyncFailedAt}
-        />
+        {/* The sync *control* lives in the Want to Listen tab, since that is all
+            it syncs. These two stay here: the notice greets you on the default tab
+            when you land back from Spotify, and a stale-playlist warning you would
+            only see after clicking the right tab is not a warning. */}
+        <div className="text-right">
+          {notice && NOTICE_TEXT[notice] && (
+            <p className="text-[11px] text-zinc-500">{NOTICE_TEXT[notice]}</p>
+          )}
+          {spotifyAccount && userRow?.playlistSyncFailedAt && (
+            <p className="text-[11px] text-amber-500/90">
+              Playlist may be out of date — a background sync failed. Sync it from Want
+              to Listen to fix it.
+            </p>
+          )}
+        </div>
       </div>
 
-      <LibraryView entries={entries} />
+      <LibraryView
+        entries={entries}
+        syncControl={
+          <SpotifyExport
+            connected={!!spotifyAccount}
+            configured={spotifyConfigured()}
+            wantCount={wantCount}
+          />
+        }
+      />
     </div>
   );
 }

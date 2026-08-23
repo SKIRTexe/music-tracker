@@ -3,19 +3,26 @@
 import { useState, useTransition } from "react";
 import { exportWantToListen, disconnectSpotify, type ExportReport } from "@/app/spotify-actions";
 
+/**
+ * Connect, sync, disconnect, and the match report.
+ *
+ * Lives inside the Want to Listen tab, because that is the only thing it syncs —
+ * sitting in the page header it read as "sync whatever I am looking at", which is
+ * not what it does.
+ *
+ * The OAuth notice and the stale-playlist warning deliberately do *not* live
+ * here: they belong in the header, where they show whatever tab you are on. A
+ * warning you only see if you happen to click the right tab is not a warning, and
+ * the notice appears when you land back from Spotify on the default tab.
+ */
 export function SpotifyExport({
   connected,
   configured,
   wantCount,
-  notice,
-  syncFailed,
 }: {
   connected: boolean;
   configured: boolean;
   wantCount: number;
-  notice?: string;
-  /** A background sync failed, so the playlist may not match Want to Listen. */
-  syncFailed?: boolean;
 }) {
   const [report, setReport] = useState<ExportReport | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -29,13 +36,6 @@ export function SpotifyExport({
     );
   }
 
-  const noticeText: Record<string, string> = {
-    linked: "Spotify connected.",
-    denied: "Spotify connection cancelled.",
-    badstate: "Connection failed a security check — please try again.",
-    failed: "Could not connect to Spotify. Please try again.",
-  };
-
   const handleExport = () => {
     startTransition(async () => {
       setReport(await exportWantToListen());
@@ -45,16 +45,6 @@ export function SpotifyExport({
 
   return (
     <div className="text-right">
-      {notice && noticeText[notice] && (
-        <p className="text-[11px] text-zinc-500 mb-1">{noticeText[notice]}</p>
-      )}
-
-      {connected && syncFailed && (
-        <p className="text-[11px] text-amber-500/90 mb-1">
-          Playlist may be out of date — a background sync failed. Sync to fix it.
-        </p>
-      )}
-
       {!connected ? (
         <a
           href="/api/spotify/login"

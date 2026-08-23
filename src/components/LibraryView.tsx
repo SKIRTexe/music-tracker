@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { removeFromLibrary } from "@/app/actions";
 import { LibraryItemCard, type LibraryEntry } from "@/components/LibraryItemCard";
@@ -46,7 +46,18 @@ function sortEntries(entries: LibraryEntry[], sort: Sort): LibraryEntry[] {
   });
 }
 
-export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
+export function LibraryView({
+  entries,
+  syncControl,
+}: {
+  entries: LibraryEntry[];
+  /**
+   * Shown only on the Want to Listen tab, because that is the only thing it
+   * syncs. Passed in rather than imported so this component stays unaware of
+   * Spotify — it owns the filter state, which is the only reason it is involved.
+   */
+  syncControl?: ReactNode;
+}) {
   const [filter, setFilter] = useState<Filter>("ALL");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [sort, setSort] = useState<Sort>("added_desc");
@@ -176,6 +187,10 @@ export function LibraryView({ entries }: { entries: LibraryEntry[] }) {
           </select>
         </div>
       </div>
+
+      {/* Above the grid, and outside the empty check: with nothing left to want,
+          a sync may still have tracks to clear out of the playlist. */}
+      {filter === "WANT" && syncControl && <div className="mb-5">{syncControl}</div>}
 
       {sorted.length === 0 ? (
         <p className="text-zinc-600 text-sm py-8">Nothing here yet.</p>
