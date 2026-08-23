@@ -32,6 +32,11 @@ model User {
   /// number. See `src/lib/ranking.ts`.
   rankingEnabled Boolean @default(false)
 
+  /// Stats modules this user has switched off, by id. A *hidden* list rather than
+  /// a visible one, so a module added later shows up for everyone by default
+  /// instead of being invisible to every existing account.
+  statsHidden String[]
+
   accounts       Account[]
   playlistTracks PlaylistTrack[]
   sessions Session[]
