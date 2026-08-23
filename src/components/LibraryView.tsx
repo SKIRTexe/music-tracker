@@ -10,19 +10,12 @@ export type { LibraryEntry };
 import type { Status } from "@/lib/statuses";
 
 type Filter = "ALL" | Status;
-type TypeFilter = "ALL" | "ALBUM" | "SONG";
 type Sort = "added_desc" | "added_asc" | "rating_desc" | "rating_asc" | "title_asc";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "ALL", label: "All" },
   { key: "LISTENED", label: "Listened" },
   { key: "WANT", label: "Want to Listen" },
-];
-
-const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
-  { key: "ALL", label: "Everything" },
-  { key: "ALBUM", label: "Albums" },
-  { key: "SONG", label: "Songs" },
 ];
 
 const SORT_OPTIONS: { value: Sort; label: string }[] = [
@@ -59,7 +52,6 @@ export function LibraryView({
   syncControl?: ReactNode;
 }) {
   const [filter, setFilter] = useState<Filter>("ALL");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [sort, setSort] = useState<Sort>("added_desc");
   const [localEntries, setLocalEntries] = useState(entries);
   const [, startTransition] = useTransition();
@@ -81,13 +73,17 @@ export function LibraryView({
     );
   }
 
-  const byType =
-    typeFilter === "ALL"
-      ? localEntries
-      : localEntries.filter((e) => e.itemType === typeFilter);
-
-  const filtered = filter === "ALL" ? byType : byType.filter((e) => e.status === filter);
+  const filtered =
+    filter === "ALL" ? localEntries : localEntries.filter((e) => e.status === filter);
   const sorted = sortEntries(filtered, sort);
+
+  // Albums and songs get their own areas rather than sharing a grid. An album
+  // cover and a single track sitting side by side read as the same kind of thing
+  // when they are not, and the "Song" badge was doing too much work to say so.
+  const sections = [
+    { key: "ALBUM", label: "Albums", items: sorted.filter((e) => e.itemType === "ALBUM") },
+    { key: "SONG", label: "Songs", items: sorted.filter((e) => e.itemType === "SONG") },
+  ];
 
   return (
     <div>
@@ -107,7 +103,7 @@ export function LibraryView({
         >
           {FILTERS.map(({ key, label }) => {
             const count =
-              key === "ALL" ? byType.length : byType.filter((e) => e.status === key).length;
+              key === "ALL" ? localEntries.length : localEntries.filter((e) => e.status === key).length;
             return (
               <option key={key} value={key}>
                 {label} ({count})
@@ -115,28 +111,16 @@ export function LibraryView({
             );
           })}
         </select>
-        <div className="flex gap-2">
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-            aria-label="Filter by type"
-            className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-zinc-600"
-          >
-            {TYPE_FILTERS.map((t) => (
-              <option key={t.key} value={t.key}>{t.label}</option>
-            ))}
-          </select>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as Sort)}
-            aria-label="Sort by"
-            className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-zinc-600"
-          >
-            {SORT_OPTIONS.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as Sort)}
+          aria-label="Sort by"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-zinc-600"
+        >
+          {SORT_OPTIONS.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Status tabs + sort (sm and up) */}
@@ -144,7 +128,7 @@ export function LibraryView({
         <div className="flex gap-1 overflow-x-auto max-w-full -mb-px">
           {FILTERS.map(({ key, label }) => {
             const count =
-              key === "ALL" ? byType.length : byType.filter((e) => e.status === key).length;
+              key === "ALL" ? localEntries.length : localEntries.filter((e) => e.status === key).length;
             return (
               <button
                 key={key}
@@ -166,16 +150,6 @@ export function LibraryView({
 
         <div className="flex items-center gap-2 pb-2">
           <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-            aria-label="Filter by type"
-            className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-400 focus:outline-none"
-          >
-            {TYPE_FILTERS.map((t) => (
-              <option key={t.key} value={t.key}>{t.label}</option>
-            ))}
-          </select>
-          <select
             value={sort}
             onChange={(e) => setSort(e.target.value as Sort)}
             aria-label="Sort by"
@@ -195,10 +169,27 @@ export function LibraryView({
       {sorted.length === 0 ? (
         <p className="text-zinc-600 text-sm py-8">Nothing here yet.</p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
-          {sorted.map((entry) => (
-            <LibraryItemCard key={entry.id} entry={entry} onRemove={handleRemove} />
-          ))}
+        <div className="space-y-8">
+          {/* An empty section is left out rather than shown as a heading over
+              nothing — a library of only albums should not carry a permanent
+              "Songs 0". */}
+          {sections
+            .filter((section) => section.items.length > 0)
+            .map((section) => (
+              <section key={section.key}>
+                <h2 className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">
+                  {section.label}
+                  <span className="ml-2 tabular-nums text-zinc-700">
+                    {section.items.length}
+                  </span>
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
+                  {section.items.map((entry) => (
+                    <LibraryItemCard key={entry.id} entry={entry} onRemove={handleRemove} />
+                  ))}
+                </div>
+              </section>
+            ))}
         </div>
       )}
     </div>

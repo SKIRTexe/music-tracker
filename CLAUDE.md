@@ -24,6 +24,13 @@ Only 11 routes exist. Keep it that way unless a feature is being deliberately ad
 - `/artist/[mbid]` — deliberately minimal: photo, name, genres, studio discography
   in chronological order. Each album is a `ResultCard`, so you can rate from here.
 - `/library` — your saved albums and songs, with filters and sorting
+- `/library` splits albums and songs into two headed sections rather than one grid.
+  An album cover and a single track side by side read as the same kind of thing when
+  they are not. The status tabs and sort apply across both; the old
+  Everything/Albums/Songs dropdown is gone as redundant. An empty section is left
+  out, so a library of only albums carries no permanent "Songs 0". The `Song` badge
+  stays on the card because the same card is reused on the home "Recently added"
+  strip, where the two types *are* still mixed.
 - `/stats` — the charts, from the tracking data. `?range=30|90|365|all` scopes the
   Activity section only
 - `/settings` — per-account preferences: the rating mode, and which stats blocks
