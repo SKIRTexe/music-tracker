@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { type LibraryItemInput } from "@/app/actions";
 import { RatePopover, STATUS_LABELS } from "@/components/RatePopover";
+import { RankFlow } from "@/components/RankFlow";
 import type { SearchItem } from "@/lib/catalog";
 
 // Hold a cover to open the rate popover without leaving the page. Matches the
@@ -33,6 +34,9 @@ export function ResultCard({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [saved, setSaved] = useState<ExistingEntry | null>(existing ?? null);
+  // Owned by the card, not the popover: the prompt portals outside the card ref,
+  // so the outside-press handler that closes the menu must not take it with it.
+  const [flowOpen, setFlowOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -223,7 +227,16 @@ export function ResultCard({
           saved={saved}
           onSaved={setSaved}
           onClose={() => setMenuOpen(false)}
+          onPromptRate={() => setFlowOpen(true)}
           className="absolute top-9 right-1.5"
+        />
+      )}
+
+      {flowOpen && (
+        <RankFlow
+          item={payload()}
+          onClose={() => setFlowOpen(false)}
+          onRated={(rating) => setSaved({ status: "LISTENED", rating })}
         />
       )}
     </div>
