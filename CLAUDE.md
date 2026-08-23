@@ -115,6 +115,18 @@ locally (loopback with an explicit port) or HTTPS in production. A LAN address l
 `http://192.168.1.x:3000` cannot be registered, so Spotify linking can't be done from
 a phone against the dev server — only via 127.0.0.1 or the deployed site.
 
+The sync **control** lives inside the Want to Listen tab, not the page header. In
+the header it read as "sync whatever I am looking at" — you would press it from
+All expecting all of it. The control is passed into `LibraryView` as a node rather
+than imported there, so the view stays unaware of Spotify; it is only involved
+because it owns the filter state.
+
+The OAuth notice and the stale-playlist warning stayed in the header on purpose.
+The notice greets you on the default tab when you land back from Spotify, and a
+warning you would only see after clicking the right tab is not a warning — the
+whole point of `playlistSyncFailedAt` is that a silent failed sync is worse than
+none.
+
 Matching is by text search against Spotify, so it won't find everything (obscure
 pressings, classical, MusicBrainz-only releases). Unmatched items are reported back
 rather than silently dropped — keep that behaviour.
