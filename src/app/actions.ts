@@ -19,6 +19,7 @@ import {
   type Bucket,
   type LadderItem,
 } from "@/lib/ranking";
+import { knownIds } from "@/lib/stats-modules";
 
 /** Everything needed to create a library row for an album or a song. */
 export type LibraryItemInput = {
@@ -531,4 +532,23 @@ export async function rankingMode(
   if (!session?.user?.id) return { enabled: false, active: false, needed: 0 };
   const state = await rankingState(session.user.id, itemType);
   return { enabled: state.enabled, active: state.active, needed: state.needed };
+}
+
+/**
+ * Replace the set of switched-off stats modules.
+ *
+ * Takes the whole list rather than one toggle so the client's view is always
+ * what gets stored — two switches flipped quickly can't race into a lost update.
+ * Unknown ids are dropped on the way in, so a module removed from the registry
+ * doesn't leave rubbish behind for ever.
+ */
+export async function setStatsHidden(hidden: string[]): Promise<void> {
+  const userId = await requireUserId();
+  const known = knownIds();
+  await prisma.user.update({
+    where: { id: userId },
+    data: { statsHidden: [...new Set(hidden.filter((id) => known.has(id)))] },
+  });
+  revalidatePath("/stats");
+  revalidatePath("/settings");
 }

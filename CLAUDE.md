@@ -16,7 +16,7 @@ they are all documented in `ARCHIVE.md` and recoverable from the git tag
 - Deployed on Vercel
 
 ## MVP Surface
-Only 10 routes exist. Keep it that way unless a feature is being deliberately added.
+Only 11 routes exist. Keep it that way unless a feature is being deliberately added.
 
 - `/` — search landing; with `?q=` it becomes the results page
   (`&type=artists|albums|songs`, default shows all three)
@@ -26,6 +26,8 @@ Only 10 routes exist. Keep it that way unless a feature is being deliberately ad
 - `/library` — your saved albums and songs, with filters and sorting
 - `/stats` — the charts, from the tracking data. `?range=30|90|365|all` scopes the
   Activity section only
+- `/settings` — per-account preferences: the rating mode, and which stats blocks
+  to draw
 - `/login`, `/register`, `/api/auth/*` — auth
 - `/api/artwork` — artwork fallback via iTunes: `?title=&artist=` for album covers,
   `?artist=` alone for an artist photo (MusicBrainz stores no artist images)
@@ -361,9 +363,44 @@ once genres have actually answered — an enriched row is never revisited, so
 stamping it after a failed lookup would lose that item's genre for good while its
 runtime figures looked perfectly correct.
 
+## Settings, and switchable stats modules
+
+`/settings` holds everything that changes how the app behaves for one account:
+the rating mode, and which blocks `/stats` draws. Preferences live there rather
+than beside the thing they affect — the ranking switch used to sit on `/library`,
+where it read as part of the library rather than as a setting.
+
+`src/lib/stats-modules.ts` is the registry, and it is the contract between the two
+pages: settings draws a switch per entry, stats wraps each block in `show(id)`.
+Three rules keep them honest:
+
+- **A module listed in the registry but not checked on the stats page is a switch
+  that silently does nothing.** Adding a block means both halves.
+- **Ids are stored in the database.** Renaming one silently un-hides that module
+  for everyone who had switched it off. Treat them as permanent; unknown ids are
+  dropped on write so a *removed* module leaves nothing behind.
+- **The stored list is the hidden one, not the visible one.** A module added later
+  then shows up for everyone by default, instead of being invisible to every
+  existing account until they go and find it.
+
+Sections disappear with their contents (`anyShown(...)` around the whole
+`<section>`, heading included), and the Overview drops its two-column split when
+only one half is on, so a lone block does not sit in a narrow column beside empty
+space. Switching *everything* off gets an explanatory empty state rather than a
+blank page, which reads as broken.
+
+`setStatsHidden` takes the entire list rather than one id, so two switches flipped
+quickly cannot race into a lost update.
+
+**The switch knob needs an explicit `left-0`.** It is absolutely positioned inside
+the track and moved with `translate-x`, and without `left-0` its start position
+comes from the button's UA `text-align: center` — so it begins near the middle and
+the translate pushes it clean outside the track. It renders as a stray dot beside
+the pill. Both switches had this.
+
 ## Comparison ranking (the Beli model)
 
-Optional, per user, toggled on `/library`. When it is on, **you never type a score.**
+Optional, per user, toggled on `/settings`. When it is on, **you never type a score.**
 You put the item in one of three coarse buckets, answer a few "which did you like
 more?" questions, and the number is derived from where it landed. Comparing two
 records you know is a question you can answer honestly; "is this a 7.4 or a 7.8"

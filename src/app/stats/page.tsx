@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { getDashboard, type Grain } from "@/lib/stats";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { BarChart, ColumnChart, StackedBar } from "@/components/charts/Bars";
 import { LineChart } from "@/components/charts/LineChart";
 import { Hero, StatTile } from "@/components/charts/StatTile";
 import { ORDINAL, SERIES, bucketLabel, weekdayName } from "@/lib/viz";
+import { STATS_MODULES } from "@/lib/stats-modules";
 
 export const dynamic = "force-dynamic";
 
@@ -46,10 +48,20 @@ export default async function StatsPage({
   const { range } = await searchParams;
   const selected = RANGES.find((r) => r.value === range) ?? RANGES[1];
 
-  const dash = await getDashboard(session.user.id, {
-    days: selected.days,
-    grain: selected.grain,
-  });
+  const [dash, user] = await Promise.all([
+    getDashboard(session.user.id, { days: selected.days, grain: selected.grain }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { statsHidden: true },
+    }),
+  ]);
+
+  // Which blocks this user has switched off in Settings. `show` is checked around
+  // every module in the registry; a module listed there but not checked here is a
+  // switch that silently does nothing.
+  const off = new Set(user?.statsHidden ?? []);
+  const show = (id: string) => !off.has(id);
+  const anyShown = (...ids: string[]) => ids.some(show);
 
   const { totals, ratings, genres, artists, era, activity, habits, backlog, events } = dash;
 
@@ -65,6 +77,26 @@ export default async function StatsPage({
           className="mt-4 inline-block text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
         >
           Find something to listen to
+        </Link>
+      </div>
+    );
+  }
+
+  // Switching everything off is a legitimate choice, but an empty page reads as
+  // broken — so say what happened and point at the switch that undoes it.
+  if (STATS_MODULES.every((m) => off.has(m.id))) {
+    return (
+      <div className="mx-auto max-w-md pt-16 text-center">
+        <h1 className="text-lg font-medium text-zinc-200">Stats</h1>
+        <p className="mt-2 text-sm text-zinc-500">
+          Every block is switched off. Your data is still being collected — nothing here
+          is being drawn.
+        </p>
+        <Link
+          href="/settings"
+          className="mt-4 inline-block text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+        >
+          Choose what to show
         </Link>
       </div>
     );
@@ -125,7 +157,17 @@ export default async function StatsPage({
 
       {/* ── Overview ─────────────────────────────────────────────────────── */}
 
-      <section className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-center">
+      {anyShown("hero", "totals") && (
+      <section
+        className={`grid gap-3 ${
+          // The two-column split only makes sense with both halves present;
+          // with one, it would sit in a narrow column beside empty space.
+          show("hero") && show("totals")
+            ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-center"
+            : ""
+        }`}
+      >
+        {show("hero") && (
         <Hero
           label="Average rating"
           value={ratings.average !== null ? oneDecimal(ratings.average) : "—"}
@@ -137,7 +179,9 @@ export default async function StatsPage({
               : "nothing rated yet"
           }
         />
+        )}
 
+        {show("totals") && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StatTile
             label="Albums"
@@ -172,13 +216,17 @@ export default async function StatsPage({
             meta={`best ${habits.longestStreak}d · ${habits.activeDays} active days`}
           />
         </div>
+        )}
       </section>
+      )}
 
       {/* ── Ratings ──────────────────────────────────────────────────────── */}
 
+      {anyShown("rating-distribution", "rating-trend", "rated-highest", "rated-lowest") && (
       <section>
         <h2 className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">Ratings</h2>
         <div className="grid gap-3 lg:grid-cols-2">
+          {show("rating-distribution") && (
           <ChartCard
             title="Rating distribution"
             subtitle="How many items sit in each whole-point band."
@@ -198,7 +246,9 @@ export default async function StatsPage({
               unit="items"
             />
           </ChartCard>
+          )}
 
+          {show("rating-trend") && (
           <ChartCard
             title="Rating given over time"
             subtitle="The average score you handed out each month, as you gave it."
@@ -235,7 +285,9 @@ export default async function StatsPage({
               xLabels={dash.ratingTrend.map((p) => bucketLabel(p.month, "month"))}
             />
           </ChartCard>
+          )}
 
+          {show("rated-highest") && (
           <ChartCard
             title="Rated highest"
             subtitle="Your top of the pile. Artists are in the table."
@@ -260,9 +312,10 @@ export default async function StatsPage({
               }))}
             />
           </ChartCard>
+          )}
 
           {/* Only worth its own card once the two lists stop being the same items. */}
-          {ratings.count > 8 && (
+          {show("rated-lowest") && ratings.count > 8 && (
           <ChartCard
             title="Rated lowest"
             subtitle="The ones that did not land. Artists are in the table."
@@ -289,12 +342,15 @@ export default async function StatsPage({
           )}
         </div>
       </section>
+      )}
 
       {/* ── Taste ────────────────────────────────────────────────────────── */}
 
+      {anyShown("genre-ratings", "genre-sizes", "artists", "decades") && (
       <section>
         <h2 className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">Taste</h2>
         <div className="grid gap-3 lg:grid-cols-2">
+          {show("genre-ratings") && (
           <ChartCard
             title="Average rating by genre"
             subtitle="Which genres you actually score well, not just collect."
@@ -321,7 +377,9 @@ export default async function StatsPage({
               }))}
             />
           </ChartCard>
+          )}
 
+          {show("genre-sizes") && (
           <ChartCard
             title="Genres by size"
             subtitle="What your library is actually made of."
@@ -354,7 +412,9 @@ export default async function StatsPage({
               }))}
             />
           </ChartCard>
+          )}
 
+          {show("artists") && (
           <ChartCard
             title="Most-saved artists"
             subtitle="By how many of their records you have kept."
@@ -378,7 +438,9 @@ export default async function StatsPage({
               }))}
             />
           </ChartCard>
+          )}
 
+          {show("decades") && (
           <ChartCard
             title="Library by decade"
             subtitle={
@@ -403,14 +465,18 @@ export default async function StatsPage({
               data={era.byDecade.map((d) => ({ label: `${d.decade}s`, value: d.items }))}
             />
           </ChartCard>
+          )}
         </div>
       </section>
+      )}
 
       {/* ── Activity ─────────────────────────────────────────────────────── */}
 
+      {anyShown("activity", "time-of-day", "day-of-week") && (
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-[10px] uppercase tracking-widest text-zinc-500">Activity</h2>
+          {show("activity") && (
           <nav className="flex items-center gap-1" aria-label="Time range">
             {RANGES.map((r) => (
               <Link
@@ -427,9 +493,11 @@ export default async function StatsPage({
               </Link>
             ))}
           </nav>
+          )}
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
+          {show("activity") && (
           <ChartCard
             className="lg:col-span-2"
             title={`What you did — last ${selected.label.toLowerCase()}`}
@@ -455,7 +523,9 @@ export default async function StatsPage({
           >
             <LineChart series={activitySeries} xLabels={activityLabels} height={160} />
           </ChartCard>
+          )}
 
+          {show("time-of-day") && (
           <ChartCard
             title="Time of day"
             subtitle="When you log things."
@@ -474,7 +544,9 @@ export default async function StatsPage({
               }))}
             />
           </ChartCard>
+          )}
 
+          {show("day-of-week") && (
           <ChartCard
             title="Day of week"
             subtitle="Which days you reach for music."
@@ -493,16 +565,20 @@ export default async function StatsPage({
               }))}
             />
           </ChartCard>
+          )}
         </div>
       </section>
+      )}
 
       {/* ── Backlog ──────────────────────────────────────────────────────── */}
 
+      {anyShown("backlog-tiles", "status-split", "backlog-age") && (
       <section>
         <h2 className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">
           Want to listen
         </h2>
 
+        {show("backlog-tiles") && (
         <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatTile
             label="In the queue"
@@ -539,8 +615,10 @@ export default async function StatsPage({
             meta="deleted while still wanted"
           />
         </div>
+        )}
 
         <div className="grid gap-3 lg:grid-cols-2">
+          {show("status-split") && (
           <ChartCard
             title="Library by status"
             subtitle="Where everything currently sits."
@@ -551,7 +629,9 @@ export default async function StatsPage({
           >
             <StackedBar data={statusSegments} total={totals.items} />
           </ChartCard>
+          )}
 
+          {show("backlog-age") && (
           <ChartCard
             title="How long the queue has waited"
             subtitle="Age of what is still in Want to Listen."
@@ -571,8 +651,10 @@ export default async function StatsPage({
           >
             <ColumnChart labelEvery={1} unit="items" data={ageBuckets} />
           </ChartCard>
+          )}
         </div>
       </section>
+      )}
     </div>
   );
 }
