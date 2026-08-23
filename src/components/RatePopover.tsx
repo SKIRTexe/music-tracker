@@ -3,13 +3,7 @@
 import { saveToLibrary, removeFromLibrary, type LibraryItemInput } from "@/app/actions";
 import type { ExistingEntry } from "@/lib/library";
 
-export const STATUS_LABELS: Record<string, string> = {
-  LISTENED: "Listened",
-  LISTENING: "Listening",
-  WANT: "Want to listen",
-};
-
-const STATUSES = ["LISTENED", "LISTENING", "WANT"] as const;
+import { STATUSES, STATUS_LABELS } from "@/lib/statuses";
 
 /**
  * The + menu: pick a status, or remove. Nothing else.

@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { type LibraryItemInput } from "@/app/actions";
-import { RatePopover, STATUS_LABELS } from "@/components/RatePopover";
+import { RatePopover } from "@/components/RatePopover";
+import { STATUS_LABELS } from "@/lib/statuses";
 import { RankFlow } from "@/components/RankFlow";
 import type { SearchItem } from "@/lib/catalog";
 

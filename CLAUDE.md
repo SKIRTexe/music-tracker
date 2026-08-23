@@ -416,6 +416,21 @@ comes from the button's UA `text-align: center` — so it begins near the middle
 the translate pushes it clean outside the track. It renders as a stray dot beside
 the pill. Both switches had this.
 
+## Statuses
+
+Two: `LISTENED` and `WANT`. `src/lib/statuses.ts` is the single list — the labels
+were previously copied into three components and the stats page, which is exactly
+how a set like this drifts. It imports nothing, because client components use it.
+
+A third, `LISTENING`, was removed as unused: no row ever held it. Removing a status
+is not just a UI edit — `saveToLibrary` validates against the list, because a page
+cached from before the change can still post the old value, and a row holding a
+status the UI no longer offers is invisible in every filter: in the library,
+reachable from nothing.
+
+The status chart keeps Listened on the hue it had when there were three, rather
+than shifting it up a slot. Colour follows the entity, not the row number.
+
 ## Comparison ranking (the Beli model)
 
 Optional, per user, toggled on `/settings`. When it is on, **you never type a score.**

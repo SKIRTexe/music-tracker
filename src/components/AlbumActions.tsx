@@ -10,12 +10,7 @@ import {
   type LibraryItemInput,
 } from "@/app/actions";
 import { RankFlow, useRankingMode } from "@/components/RankFlow";
-
-const STATUSES = [
-  ["LISTENED", "Listened"],
-  ["LISTENING", "Listening now"],
-  ["WANT", "Want to listen"],
-] as const;
+import { STATUSES, STATUS_LABELS } from "@/lib/statuses";
 
 interface Props {
   mbid: string;
@@ -106,7 +101,7 @@ export function AlbumActions({
   return (
     <div>
       <div className="flex flex-wrap gap-1.5 mb-5">
-        {STATUSES.map(([s, label]) => (
+        {STATUSES.map((s) => (
           <button
             key={s}
             onClick={() => handleStatus(s)}
@@ -117,7 +112,7 @@ export function AlbumActions({
                 : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
             }`}
           >
-            {label}
+            {STATUS_LABELS[s]}
           </button>
         ))}
       </div>

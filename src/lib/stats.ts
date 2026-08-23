@@ -57,7 +57,7 @@ export type LibraryTotals = {
   items: number;
   albums: number;
   songs: number;
-  byStatus: { want: number; listening: number; listened: number };
+  byStatus: { want: number; listened: number };
   rated: number;
   unrated: number;
   /** Share of the library that has a rating, 0–1. */
@@ -78,7 +78,6 @@ export async function getLibraryTotals(userId?: string): Promise<LibraryTotals> 
       COUNT(*) FILTER (WHERE "itemType" = 'ALBUM')        AS albums,
       COUNT(*) FILTER (WHERE "itemType" = 'SONG')         AS songs,
       COUNT(*) FILTER (WHERE "status" = 'WANT')           AS want,
-      COUNT(*) FILTER (WHERE "status" = 'LISTENING')      AS listening,
       COUNT(*) FILTER (WHERE "status" = 'LISTENED')       AS listened,
       COUNT("rating")                                     AS rated,
       COUNT(DISTINCT "artistName")                        AS artists,
@@ -105,7 +104,6 @@ export async function getLibraryTotals(userId?: string): Promise<LibraryTotals> 
     songs: num(row?.songs),
     byStatus: {
       want: num(row?.want),
-      listening: num(row?.listening),
       listened: num(row?.listened),
     },
     rated,

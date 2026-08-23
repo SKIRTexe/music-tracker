@@ -9,6 +9,7 @@ import { LineChart } from "@/components/charts/LineChart";
 import { Hero, StatTile } from "@/components/charts/StatTile";
 import { ORDINAL, SERIES, bucketLabel, weekdayName } from "@/lib/viz";
 import { STATS_MODULES } from "@/lib/stats-modules";
+import { STATUS_LABELS } from "@/lib/statuses";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,6 @@ const RANGES = [
   { value: "365", label: "1 year", days: 365, grain: "month" as Grain },
   { value: "all", label: "All time", days: 36_500, grain: "month" as Grain },
 ];
-
-const STATUS_LABELS = ["Want to listen", "Listening", "Listened"];
 
 export default async function StatsPage({
   searchParams,
@@ -113,10 +112,11 @@ export default async function StatsPage({
   ];
   const windowTotals = activitySeries.map((s) => s.points.reduce((a, b) => a + b, 0));
 
+  // Colour follows the entity, not the row number: Listened keeps the hue it had
+  // when there were three statuses, so the chart is not repainted by a removal.
   const statusSegments = [
-    { label: STATUS_LABELS[0], value: totals.byStatus.want, color: SERIES[0] },
-    { label: STATUS_LABELS[1], value: totals.byStatus.listening, color: SERIES[1] },
-    { label: STATUS_LABELS[2], value: totals.byStatus.listened, color: SERIES[2] },
+    { label: STATUS_LABELS.WANT, value: totals.byStatus.want, color: SERIES[0] },
+    { label: STATUS_LABELS.LISTENED, value: totals.byStatus.listened, color: SERIES[2] },
   ];
 
   const ageBuckets = [

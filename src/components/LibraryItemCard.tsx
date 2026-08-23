@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { STATUS_LABELS } from "@/lib/statuses";
 
 export type LibraryEntry = {
   id: string;
@@ -14,12 +15,6 @@ export type LibraryEntry = {
   rating: number | null;
   coverUrl: string | null;
   addedAt: Date;
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  LISTENED: "Listened",
-  LISTENING: "Listening",
-  WANT: "Want to listen",
 };
 
 /**

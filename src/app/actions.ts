@@ -20,6 +20,7 @@ import {
   type LadderItem,
 } from "@/lib/ranking";
 import { knownIds } from "@/lib/stats-modules";
+import { isStatus } from "@/lib/statuses";
 
 /** Everything needed to create a library row for an album or a song. */
 export type LibraryItemInput = {
@@ -161,6 +162,13 @@ function queueBackground(params: {
 /** Add an item to the library, or move an existing one to a new status. */
 export async function saveToLibrary(item: LibraryItemInput, status: string) {
   const userId = await requireUserId();
+
+  // A page cached from before a status was removed can still post the old value,
+  // and a row holding a status the UI no longer offers is invisible in every
+  // filter — in the library, reachable from nothing.
+  if (!isStatus(status)) {
+    throw new Error(`Unknown status: ${status}`);
+  }
 
   const existingSongId = await findExistingSongId(userId, item);
   const prior = await loadPrior(userId, item, existingSongId);
