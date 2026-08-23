@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { RatePopover, STATUS_LABELS } from "@/components/RatePopover";
+import { RankFlow } from "@/components/RankFlow";
 import type { LibraryItemInput } from "@/app/actions";
 import type { ExistingEntry } from "@/lib/library";
 import type { CatalogTrack } from "@/lib/catalog";
@@ -38,6 +39,8 @@ export function TrackRow({
 }) {
   const [saved, setSaved] = useState<ExistingEntry | null>(existing);
   const [open, setOpen] = useState(false);
+  // Owned by the row, not the popover — see ResultCard for why.
+  const [flowOpen, setFlowOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -126,7 +129,16 @@ export function TrackRow({
           saved={saved}
           onSaved={setSaved}
           onClose={() => setOpen(false)}
+          onPromptRate={() => setFlowOpen(true)}
           className="absolute right-0 top-8"
+        />
+      )}
+
+      {flowOpen && (
+        <RankFlow
+          item={item}
+          onClose={() => setFlowOpen(false)}
+          onRated={(rating) => setSaved({ status: "LISTENED", rating })}
         />
       )}
     </div>

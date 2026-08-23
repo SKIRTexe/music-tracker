@@ -392,7 +392,15 @@ blank page, which reads as broken.
 `setStatsHidden` takes the entire list rather than one id, so two switches flipped
 quickly cannot race into a lost update.
 
-Marking something **Listened** from the card popover opens the rate prompt, for a
+The + menu is three status buttons and nothing else. **The rate prompt is owned by
+the card, not the popover.** It used to be rendered inside the popover, which broke
+it outright: the prompt portals to `document.body`, so it sits outside the card ref,
+and the card closes its menu on any `pointerdown` outside that ref — unmounting the
+popover and the prompt inside it before any button in the prompt could be clicked.
+It looked like the prompt was refusing to rate. Anything portalled must be a sibling
+of the popover, with state the menu closing cannot touch.
+
+Marking something **Listened** opens the rate prompt, for a
 first rating only — re-marking an already-rated item is not a request to re-rate
 it. The prompt opens *after* the status write lands: both paths upsert the same
 row, and firing them together races two writes at one record. The prompt carries
