@@ -19,7 +19,8 @@ they are all documented in `ARCHIVE.md` and recoverable from the git tag
 Only 11 routes exist. Keep it that way unless a feature is being deliberately added.
 
 - `/` — search landing; with `?q=` it becomes the results page
-  (`&type=artists|albums|songs`, default shows all three)
+  (`&type=artists|albums|songs`, default shows all three). Bare, it also carries
+  the two Discover rows (see below)
 - `/album/[mbid]` — album detail, tracklist, add/rate
 - `/artist/[mbid]` — deliberately minimal: photo, name, genres, studio discography
   in chronological order. Each album is a `ResultCard`, so you can rate from here.
@@ -104,6 +105,73 @@ If you change ranking, re-check these queries by hand — each catches a differe
 failure: `radiohead`, `beatles`, `the beatles`, `kendrick lamar`, `kid a`,
 `bohemian rhapsody`, `karma police`, `queen`.
 
+## Discover, on the landing page
+
+Two rows under the search hero: suggested albums, then artists to explore. Seeded
+from the genres the library already has (`AlbumLog.genres`, denormalised, so the
+seed costs no catalogue call), falling back to a fixed list of broad genres for an
+account with none yet. `src/lib/discover.ts` picks and gates the seeds;
+`discoverByGenre` in `catalog.ts` fetches them.
+
+**Genre search is the entire surface.** Everything else that could power this is
+gone — verified against the live API, not the docs:
+
+| endpoint | result |
+| --- | --- |
+| `/recommendations`, `/recommendations/available-genre-seeds` | **404** |
+| `/artists/{id}/related-artists`, `/audio-features`, `/browse/new-releases` | 403 |
+| `/artists/{id}/top-tracks`, `/artists?ids=` (batch) | 403 |
+| `/artists/{id}` (single), `/search` | 200 |
+
+`track.popularity` is **null** on every search result, alongside the artist genres
+and followers already documented below. So there is no popularity signal, no
+similarity signal, and no recommender. Don't go looking for the ones the older
+Spotify docs describe; adding `user-top-read` would change which genres seed the
+search, not what answers it.
+
+Five things this is built on, each of which was a wrong guess first:
+
+- **Album search with `genre:` returns zero results.** Not "ignores the filter" —
+  an empty page, for every genre tried. So the albums are the albums the matched
+  *tracks* came from, deduped, with anything not `album_type: "album"` dropped,
+  because a genre track search is mostly singles.
+- **Broad genres are the ones Spotify indexes well; narrow ones are junk.** This is
+  the opposite of the obvious theory, and the obvious theory was implemented first.
+  Ranking seeds by how *distinctive* they were to the library — preferring
+  `piano rock` over its parent `rock` — produced a row of Casey Stratton, Jan Rot
+  and Lee Han Chul, while `indie rock` returns Arctic Monkeys and Tame Impala.
+  Spotify's micro-genres are populated by long-tail and knockoff uploads. So
+  `rankSeeds` weights by support, with rating as the multiplier rather than the
+  ranking.
+- **The artist count is a free quality gate on a seed.** Genres Spotify covers well
+  return 5–10 artists from the same request; the junk ones return 0–1. `CANDIDATES`
+  seeds are fetched in parallel and the ones under `ARTIST_QUALITY_MIN` discarded,
+  which costs one extra request rather than a second round-trip.
+- **The albums row is keyed by artist, not album id.** A genre track search returns
+  many tracks by the same popular artist, each mapping to a different album, so
+  keying by id gives six distinct rows that are three Laufey records. The artists
+  row then excludes anyone whose record sits in the row above it.
+- **The artists row cannot rely on artist search.** `genre:"indie rock"` returns
+  artists; `genre:"alternative r&b"` and `genre:"singer-songwriter"` return none,
+  because the withdrawal of artist genres took much of that index with it. So the
+  track artists come back from the same response as a fallback — and since
+  `/artists?ids=` is 403, only the few actually being displayed get hydrated, one
+  request each.
+
+Album yield is the other reason for paging: a narrow genre returns one album per
+ten tracks, so six cannot be filled from one page. `getDiscover` pages a second
+time **only when it comes up short**, so the common case stays at one request per
+seed. Rows turn over daily rather than per load (`today()` picks the seeds and
+shifts the offset), which is also what makes the 5-minute fetch cache worth having.
+
+Already-saved albums and artists are filtered out, artists by id *and* lowercased
+name, because rows saved before `artistMbid` existed have no id. An empty result
+renders no section rather than an empty one.
+
+Grid columns are sized to divide into six exactly (`grid-cols-3 md:grid-cols-6`,
+artists `grid-cols-3 sm:grid-cols-6`). A fixed-length row in a grid sized for
+something else leaves two orphans on the end and reads as a grid that ran out.
+
 ## Spotify export
 
 `/library` can push Want to Listen into one Spotify playlist. Albums are expanded to
@@ -178,6 +246,53 @@ To check hydration without a browser at hand, add a temporary client component w
 `--dump-dom` snapshot alone is not proof: Next's devtools overlay injects
 `nextjs-portal` even when app hydration has failed.
 
+## Setting up on a machine that has never run this
+
+There is one database. `DATABASE_URL` points at the same Supabase instance the
+deployed site uses, so **a local dev server is working on live data** — an album
+added while poking around locally is on the website at the next refresh, and a
+deletion is just as real. There is no seed database and no sync step.
+
+`.env.local` is gitignored, so a fresh clone has the code and none of the
+configuration. That is the whole of the difference between "it just works on my
+other machine" and a day of debugging — the other machine has the file. **Copy
+`.env.local` across rather than rebuilding it**, changing only `AUTH_URL` (and
+`SPOTIFY_REDIRECT_URI` if it is not already loopback) to suit the new host.
+
+Two traps if you try to rebuild it instead. Both present as something other than
+what they are:
+
+**`vercel env pull` cannot return a Sensitive variable, and does not say so.**
+Every variable on this project is typed Sensitive, which is write-only by design —
+unreadable through the CLI or the API. The pull still reports success and still
+writes a complete-looking file, with the literal string `[SENSITIVE]` as the value
+of every secret. So `DATABASE_URL`, `AUTH_SECRET` and both Spotify keys arrive as
+eleven characters of nothing, the app fails with `Spotify token failed: 400` and
+`Can't reach database server`, and the file looks perfectly populated. Check
+`vercel env ls` for the Sensitive type before trusting a pull. The deployed site is
+unaffected — Vercel injects the real values at runtime on its own infrastructure.
+
+**Supabase's direct host is IPv6-only.** `db.<ref>.supabase.co` publishes an `AAAA`
+record and no `A` record, so on a network without IPv6 it is unreachable at any
+password — and the error is `Can't reach database server`, which reads as a wrong
+password or a paused project. The connection string the dashboard shows first is
+that direct one. Local dev needs the **pooler** instead, which is IPv4:
+
+    DATABASE_URL  postgres.<ref>@aws-0-us-east-1.pooler.supabase.com:6543  (+ ?pgbouncer=true&connection_limit=1)
+    DIRECT_URL    postgres.<ref>@aws-0-us-east-1.pooler.supabase.com:5432
+
+Note the username changes from `postgres` to `postgres.<ref>`, so the direct string
+cannot simply have its host swapped. The pooler is behind **Connect** in the top bar
+of the Supabase project, not under Settings → Database, which is why it is easy to
+miss. Which pooler is not guessable — this project is on `aws-0`, and `aws-1`
+answers `Tenant or user not found`. That error distinguishes the two without a
+password, if it is ever needed again.
+
+Everything else about the login path is ordinary, with one exception worth knowing:
+`src/app/login/page.tsx` collapses every `AuthError` into `?error=1`, so a database
+that is unreachable — or a Supabase free project paused after ~7 days idle — presents
+to the user as *wrong email or password*.
+
 ## Deploys are automatic — with one caveat now handled
 
 Pushing to `main` triggers a Vercel deploy. Database changes are **not** automatic
@@ -215,6 +330,16 @@ items that left Want to Listen *before* tracking existed stay orphaned and are n
 removed; they have to be deleted by hand.
 
 ## Spotify API limits that are not in the docs
+
+**Never let a bearer token be baked into a Next-cached fetch.** `api()` in
+`catalog.ts` caches with `next: { revalidate: 300 }`, and a cached entry revalidates
+using the `Authorization` header it was *created* with. App tokens last an hour, so
+any cached path that outlives its token starts returning 401 — and the 401 is cached
+in its place, so it never recovers. It presents as the entire catalogue dying about
+an hour into an uptime, search included, while the same URL with a freshly minted
+token returns 200 by hand. `api()` therefore clears `appToken` on a 401 and retries
+once with `cache: "no-store"`; the retry *must* bypass the cache or it is handed the
+very response it is retrying because of.
 
 - `search` and `artists/{id}/albums` **cap `limit` at 10**. Asking for 11 returns
   `400 "Invalid limit"` rather than a clamped result, so anything longer is paged by
@@ -528,6 +653,74 @@ The binary search runs entirely in the client — every candidate is sent once w
 the modal opens, so answering a question needs no request. The final slot is
 submitted once and re-scored server-side, so a stale candidate list cannot corrupt
 the ladder. Worst case is 6 questions for a 40-item bucket.
+
+## The iOS app, and the API it talks to
+
+There is a native SwiftUI client at `~/Developer/recordcrate-ios`. It is a **thin
+client**: it renders, and this app does the thinking. Search ranking, the ranking
+ladder, tracking, enrichment and the playlist sync all stay here, so they keep
+being correct for both surfaces instead of being reimplemented against the same
+traps a second time in Swift.
+
+`src/app/api/mobile/*` is its API. Nine routes, all JSON:
+
+| Route | |
+| --- | --- |
+| `POST /auth/login`, `/auth/register` | credentials in, bearer token out |
+| `GET /me` | who the token is, plus status counts |
+| `GET /search?q=&type=&limit=` | all three result types; auth optional |
+| `GET /album/[id]`, `/artist/[id]` | detail, with the user's standing on each item |
+| `GET /library` | every saved row, unpaged |
+| `POST /library`, `/library/rate`, `/library/remove` | the three mutations |
+
+Four things about it are load-bearing:
+
+**1. The writes are shared, not copied.** `src/lib/library-write.ts` holds
+`saveToLibraryFor`, `rateItemFor` and `removeFromLibraryFor`, each taking an
+explicit `userId`. `src/app/actions.ts` is now a set of thin wrappers that resolve
+the session, call those, and revalidate; the route handlers resolve a bearer token
+and call the same functions. **Do not add a mutation to `actions.ts` that isn't in
+`library-write.ts`** — the app would silently not have it, and the two paths would
+start to drift on things like the song-identity fallback, which is precisely the
+kind of rule that is only right in one place by accident.
+
+Nothing in `library-write.ts` calls `revalidatePath`. Cache invalidation belongs to
+the caller that has pages to invalidate; from a route handler serving JSON it is
+meaningless work.
+
+**2. Auth is a parallel path, not a way into the session.** `src/lib/mobile-auth.ts`
+signs its own HS256 JWT with `AUTH_SECRET` — the same secret, because a second one
+is a second thing to forget to set on Vercel, but a different algorithm and
+different claims, so a mobile token and a NextAuth session cookie will never
+validate each other. That is intended. Only the credentials provider is offered:
+GitHub sign-in is a browser redirect flow, and such an account has no `password` to
+check.
+
+The `authed()` wrapper answers **401**, never a redirect to `/login`. A native
+client cannot follow a redirect to an HTML page — it would see a 200 full of
+markup and no way to tell that anything went wrong.
+
+**3. A 401 only signs the app out when a token was actually sent.** A failed
+sign-in also answers 401, and treating that as an expiry would clear the keychain
+of a session that is still good: mistyping a password would log you out. The check
+is on the presence of the `Authorization` header, in `APIClient.send`.
+
+**4. Every write response is read back from the database, not echoed.** A rating
+comes back clamped and rounded, so the app can never show a number the database
+disagrees with. More importantly, a *song* write may land on a row stored under a
+different track id — the title+artist rule — so echoing the request would hand the
+client an id its own library doesn't contain. Both `POST /library` and
+`/library/rate` re-select the row and return that.
+
+`Info.plist` in the iOS project carries `NSAllowsLocalNetworking` so the app can
+reach a dev server over plain HTTP. That is the narrow exception, not
+`NSAllowsArbitraryLoads`; production is HTTPS and unaffected.
+
+Still web-only, and deliberately so for now: `/stats`, `/settings`, the comparison
+ranking flow, and the Spotify export. The app rates with a slider through
+`rateItem` — the same path the site uses when ranking is off — rather than through
+`rateByNumber`, so it does not start building a ladder for someone who never
+turned the feature on.
 
 ## Known Limitations
 - Songs are stored under a MusicBrainz *recording* id, which has no page of its own, so

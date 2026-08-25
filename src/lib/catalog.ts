@@ -14,6 +14,7 @@
 
 /** Spotify rejects limit > 10 on search with 400 "Invalid limit". */
 const PAGE_SIZE = 10;
+export { PAGE_SIZE as SEARCH_PAGE_SIZE };
 
 const ACCOUNTS = "https://accounts.spotify.com";
 const API = "https://api.spotify.com/v1";
@@ -105,20 +106,37 @@ async function getAppToken(): Promise<string> {
   return appToken.value;
 }
 
-async function api<T>(path: string): Promise<T> {
-  const token = await fetch(`${API}${path}`, {
+async function api<T>(path: string, opts: { fresh?: boolean } = {}): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
     headers: { Authorization: `Bearer ${await getAppToken()}` },
     // Spotify results barely change; let Next reuse them briefly across requests.
-    next: { revalidate: 300 },
+    // The retry below must opt out, or it is handed the very response it is
+    // retrying because of.
+    ...(opts.fresh ? { cache: "no-store" as const } : { next: { revalidate: 300 } }),
   });
-  if (token.status === 404) throw new CatalogNotFound(path);
-  if (token.status === 429) {
-    const wait = Number(token.headers.get("Retry-After") ?? "1");
-    await new Promise((r) => setTimeout(r, Math.min(wait, 5) * 1000));
-    return api<T>(path);
+
+  if (res.status === 404) throw new CatalogNotFound(path);
+
+  /**
+   * A cached entry revalidates with the `Authorization` header it was *created*
+   * with. App tokens last an hour, so any cached path that outlives its token
+   * starts returning 401 — and the 401 is then cached in its place, so it does not
+   * recover on its own. Presents as the whole catalogue dying an hour into an
+   * uptime, search included, while a fresh token works fine by hand.
+   */
+  if (res.status === 401 && !opts.fresh) {
+    appToken = null;
+    return api<T>(path, { fresh: true });
   }
-  if (!token.ok) throw new Error(`Spotify ${path} failed: ${token.status}`);
-  return token.json();
+
+  if (res.status === 429) {
+    const wait = Number(res.headers.get("Retry-After") ?? "1");
+    await new Promise((r) => setTimeout(r, Math.min(wait, 5) * 1000));
+    return api<T>(path, opts);
+  }
+
+  if (!res.ok) throw new Error(`Spotify ${path} failed: ${res.status}`);
+  return res.json();
 }
 
 // ── Response shapes ───────────────────────────────────────────────────────────
@@ -375,4 +393,102 @@ export async function getTrack(id: string): Promise<TrackDetail> {
     durationMs: t.duration_ms ?? null,
     albumId: t.album?.id ?? null,
   };
+}
+
+// ── Discover ──────────────────────────────────────────────────────────────────
+
+export interface GenreResults {
+  albums: SearchItem[];
+  /** Artists from the genre artist search. Often empty — see below. */
+  artists: ArtistItem[];
+  /** Artists of the matched tracks, without images. The fallback for the row. */
+  trackArtists: { id: string; name: string }[];
+}
+
+/**
+ * Albums and artists for one genre, for the landing page's Discover rows.
+ *
+ * Everything here is shaped by what Spotify will still answer, all of it verified
+ * against the live API rather than the docs:
+ *
+ * - **Album search with `genre:` returns zero results, always.** Not "ignores the
+ *   filter" — an empty page, for every genre tried. So albums come from the tracks
+ *   the genre matched, deduped, with anything that is not `album_type: "album"`
+ *   dropped, because a genre track search is mostly singles.
+ * - **Artist search with `genre:` works for some genres and not others.**
+ *   `indie rock` gives Arctic Monkeys and Tame Impala; `alternative r&b` and
+ *   `singer-songwriter` give nothing at all. Spotify withdrew artist genres, and
+ *   whatever survives in the search index is uneven. So the track artists come back
+ *   too, as the fallback that works for every genre.
+ * - **`/artists?ids=` is 403** for this app, so those fallback artists can only be
+ *   hydrated one at a time. `artistsByIds` does that, and it is why the row prefers
+ *   the free artists from this response.
+ */
+export async function discoverByGenre(
+  genre: string,
+  opts: { offset?: number } = {}
+): Promise<GenreResults> {
+  const params = new URLSearchParams({
+    // Quoted for the same Lucene reason the playlist matcher needs it: unquoted,
+    // `genre:hip hop` binds only "hip" to the field and matches nothing.
+    q: `genre:"${genre.replace(/"/g, "")}"`,
+    type: "artist,track",
+    limit: String(PAGE_SIZE),
+    offset: String(opts.offset ?? 0),
+  });
+
+  try {
+    const data = await api<{
+      tracks?: { items: SpTrack[] };
+      artists?: { items: SpArtist[] };
+    }>(`/search?${params.toString()}`);
+
+    const tracks = (data.tracks?.items ?? []).filter(Boolean);
+
+    const albums: SearchItem[] = [];
+    const seenAlbum = new Set<string>();
+    for (const track of tracks) {
+      const album = track.album;
+      if (!album?.artists?.length || album.album_type !== "album") continue;
+      if (seenAlbum.has(album.id)) continue;
+      seenAlbum.add(album.id);
+      albums.push(albumToItem(album));
+    }
+
+    const seenArtist = new Set<string>();
+    const trackArtists: { id: string; name: string }[] = [];
+    for (const track of tracks) {
+      for (const artist of track.artists ?? []) {
+        if (!artist?.id || seenArtist.has(artist.id)) continue;
+        seenArtist.add(artist.id);
+        trackArtists.push({ id: artist.id, name: artist.name });
+      }
+    }
+
+    const artists = (data.artists?.items ?? []).filter(Boolean).map(artistToItem);
+    if (tracks.length === 0) {
+      // Not an error, so nothing above would notice: the row would just be absent.
+      console.warn(`Spotify discover: genre "${genre}" returned no tracks`);
+    }
+
+    return { albums, artists, trackArtists };
+  } catch (err) {
+    // A dead suggestion row is not worth failing the landing page over.
+    console.error("Spotify discover failed:", err instanceof Error ? err.message : err);
+    return { albums: [], artists: [], trackArtists: [] };
+  }
+}
+
+/**
+ * Full artist records for ids that arrived without images.
+ *
+ * One request each, because the batch endpoint `/artists?ids=` answers 403 for this
+ * app. Callers must therefore keep the list to what they will actually display.
+ * Failures drop out rather than failing the set.
+ */
+export async function artistsByIds(ids: string[]): Promise<ArtistItem[]> {
+  const settled = await Promise.allSettled(ids.map((id) => api<SpArtist>(`/artists/${id}`)));
+  return settled
+    .filter((r): r is PromiseFulfilledResult<SpArtist> => r.status === "fulfilled")
+    .map((r) => artistToItem(r.value));
 }

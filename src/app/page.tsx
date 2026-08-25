@@ -2,6 +2,7 @@ import { search, type SearchItem } from "@/lib/catalog";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getExistingEntries, getSavedSongs, songKey, type ExistingEntry } from "@/lib/library";
+import { getDiscover } from "@/lib/discover";
 import { ResultCard } from "@/components/ResultCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { LibraryItemCard } from "@/components/LibraryItemCard";
@@ -48,6 +49,9 @@ function SearchBar({ defaultValue, type, big }: { defaultValue: string; type: Se
     </form>
   );
 }
+
+/** A landing-page row: ruled off from the one above it, with room below. */
+const BAND = "border-t border-zinc-800/60 pt-8 mb-10";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">{children}</h2>;
@@ -163,18 +167,22 @@ export default async function HomePage({
   }
 
   // ── Landing ────────────────────────────────────────────────────────────────
-  const recent = session?.user?.id
-    ? await prisma.albumLog.findMany({
-        where: { userId: session.user.id },
-        orderBy: { addedAt: "desc" },
-        take: 12,
-        select: {
-          id: true, mbid: true, itemType: true, albumTitle: true, artistName: true,
-          parentAlbum: true, releaseYear: true, status: true, rating: true,
-          coverUrl: true, addedAt: true,
-        },
-      })
-    : [];
+  const userId = session?.user?.id;
+  const [recent, discover] = await Promise.all([
+    userId
+      ? prisma.albumLog.findMany({
+          where: { userId },
+          orderBy: { addedAt: "desc" },
+          take: 12,
+          select: {
+            id: true, mbid: true, itemType: true, albumTitle: true, artistName: true,
+            parentAlbum: true, releaseYear: true, status: true, rating: true,
+            coverUrl: true, addedAt: true,
+          },
+        })
+      : [],
+    getDiscover(userId),
+  ]);
 
   return (
     <div>
@@ -199,7 +207,7 @@ export default async function HomePage({
       </div>
 
       {recent.length > 0 && (
-        <section className="border-t border-zinc-800/60 pt-8">
+        <section className={BAND}>
           <div className="flex items-baseline justify-between mb-4">
             <SectionHeading>Recently added</SectionHeading>
             <Link href="/library" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
@@ -209,6 +217,38 @@ export default async function HomePage({
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
             {recent.map((entry) => (
               <LibraryItemCard key={entry.id} entry={entry} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {discover.albums.length > 0 && (
+        <section className={BAND}>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <SectionHeading>Suggested albums</SectionHeading>
+            <p className="text-[10px] text-zinc-600 truncate">
+              {discover.personal ? "Because you like " : "Popular in "}
+              {/* Only the genres get capitalised — Tailwind's `capitalize` would
+                  otherwise title-case the sentence around them. */}
+              <span className="capitalize">{discover.genres.join(" · ")}</span>
+            </p>
+          </div>
+          {/* Sized to divide into six exactly at every width — a fixed-length row
+              with two orphans on the end reads as a grid that ran out. */}
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
+            {discover.albums.map((item) => (
+              <ResultCard key={item.id} item={item} isLoggedIn={isLoggedIn} existing={null} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {discover.artists.length > 0 && (
+        <section className={BAND}>
+          <SectionHeading>Artists to explore</SectionHeading>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
+            {discover.artists.map((artist) => (
+              <ArtistCard key={artist.id} artist={artist} />
             ))}
           </div>
         </section>
