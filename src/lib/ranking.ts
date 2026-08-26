@@ -23,6 +23,16 @@ import { prisma } from "@/lib/prisma";
 
 export type Bucket = "LOVED" | "FINE" | "DISLIKED";
 
+/**
+ * Where a placement's score came from. Stored in `AlbumLog.ratingSource`.
+ *
+ * Only `COMPARISON` floats; the other two anchor. Nothing outside this file reads
+ * the column, so adding `TIED` needed no migration — it is a String column — but
+ * anything that ever does must treat unknown values as anchors rather than
+ * assuming the set is two.
+ */
+export type RatingSource = "COMPARISON" | "MANUAL" | "TIED";
+
 /** Best first. This order defines the ladder across buckets. */
 export const BUCKETS: readonly Bucket[] = ["LOVED", "FINE", "DISLIKED"] as const;
 
@@ -39,7 +49,7 @@ export const BUCKET_LABELS: Record<Bucket, string> = {
  * never drag an album you merely liked down into a different verdict. A bucket's
  * items only ever move within their own band.
  */
-const BANDS: Record<Bucket, { low: number; high: number }> = {
+export const BANDS: Record<Bucket, { low: number; high: number }> = {
   LOVED: { low: 6.8, high: 10 },
   FINE: { low: 3.4, high: 6.7 },
   DISLIKED: { low: 0, high: 3.3 },
@@ -237,9 +247,13 @@ export async function recomputeBucket(
   if (items.length === 0) return;
 
   const count = items.length;
+  // Anchors are everything that is *not* a floating comparison placement: a typed
+  // score, and a tie. A tie asserts a number as firmly as typing one does — "this
+  // is the same as that" — so letting it float would immediately undo it, which is
+  // the one thing the user just said must not happen.
   const scores = deriveBucketScores(
     bucket,
-    items.map((item) => (item.source === "MANUAL" ? item.rating : null))
+    items.map((item) => (item.source === "COMPARISON" ? null : item.rating))
   );
 
   await prisma.$transaction(
@@ -279,9 +293,18 @@ export async function placeItem(params: {
   itemType: string;
   bucket: Bucket;
   insertIndex: number;
-  source: "COMPARISON" | "MANUAL";
   /**
-   * The number the user typed, for a MANUAL placement.
+   * How this placement was arrived at, which decides whether its score anchors
+   * the items around it:
+   *
+   * - `COMPARISON` — floats. Its number is derived from where it sits.
+   * - `MANUAL` — a typed score, kept exactly.
+   * - `TIED` — "too close to call" against a neighbour. Anchored to that
+   *   neighbour's score, because a tie is a statement about the number.
+   */
+  source: RatingSource;
+  /**
+   * The number to keep exactly — typed for MANUAL, the tied item's for TIED.
    *
    * Written before the re-score so it is already there to anchor against —
    * without it the recompute would derive a score from the slot and overwrite

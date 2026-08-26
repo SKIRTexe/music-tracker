@@ -50,3 +50,4 @@ prisma/prisma/
 
 # local-only SQLite preview schema (see DEPLOY.md for the real Postgres setup)
 prisma/schema.sqlite.prisma
+.env*
