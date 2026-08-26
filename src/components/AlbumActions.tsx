@@ -7,8 +7,8 @@ import {
   rateItem,
   rateByNumber,
   removeFromLibrary,
-  type LibraryItemInput,
 } from "@/app/actions";
+import type { LibraryItemInput } from "@/lib/library-write";
 import { RankFlow, useRankingMode } from "@/components/RankFlow";
 import { STATUSES, STATUS_LABELS } from "@/lib/statuses";
 

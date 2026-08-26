@@ -31,7 +31,11 @@ import { knownIds } from "@/lib/stats-modules";
  * change affects.
  */
 
-export type { LibraryItemInput };
+// NB: types are NOT re-exported from this file. Next's "use server" transform
+// emits every export *name* into a runtime ensureServerEntryExports([...]) array,
+// and a type has no runtime binding — so `export type { X }` here throws
+// "ReferenceError: X is not defined" when the module evaluates, killing every
+// action in it. Import the types from the modules that declare them instead.
 
 async function requireUserId(): Promise<string> {
   const session = await auth();
@@ -82,7 +86,6 @@ export async function setRankingEnabled(enabled: boolean): Promise<void> {
   refresh();
 }
 
-export type { ComparisonSetup };
 
 export async function getComparisonSetup(item: LibraryItemInput): Promise<ComparisonSetup> {
   return comparisonSetupFor(await requireUserId(), item);

@@ -1,6 +1,7 @@
 "use client";
 
-import { saveToLibrary, removeFromLibrary, type LibraryItemInput } from "@/app/actions";
+import { saveToLibrary, removeFromLibrary } from "@/app/actions";
+import type { LibraryItemInput } from "@/lib/library-write";
 import type { ExistingEntry } from "@/lib/library";
 
 import { STATUSES, STATUS_LABELS } from "@/lib/statuses";

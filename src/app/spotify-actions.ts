@@ -16,7 +16,8 @@ import {
  * is the session and the revalidation.
  */
 
-export type { ExportReport };
+// Not re-exported: see the note in actions.ts. A type in a "use server" file's
+// export list becomes an undefined runtime reference and throws on evaluation.
 
 export async function exportWantToListen(): Promise<ExportReport> {
   const session = await auth();

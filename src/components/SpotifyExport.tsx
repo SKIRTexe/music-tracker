@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { exportWantToListen, disconnectSpotify, type ExportReport } from "@/app/spotify-actions";
+import { exportWantToListen, disconnectSpotify } from "@/app/spotify-actions";
+import type { ExportReport } from "@/lib/spotify-export";
 
 /**
  * Connect, sync, disconnect, and the match report.

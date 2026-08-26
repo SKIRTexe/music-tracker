@@ -5,7 +5,7 @@ import Link from "next/link";
 import { RatePopover } from "@/components/RatePopover";
 import { STATUS_LABELS } from "@/lib/statuses";
 import { RankFlow } from "@/components/RankFlow";
-import type { LibraryItemInput } from "@/app/actions";
+import type { LibraryItemInput } from "@/lib/library-write";
 import type { ExistingEntry } from "@/lib/library";
 import type { CatalogTrack } from "@/lib/catalog";
 

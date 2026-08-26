@@ -7,10 +7,10 @@ import {
   rateByComparison,
   rateByNumber,
   rateItem,
-  type ComparisonSetup,
   rankingMode,
-  type LibraryItemInput,
 } from "@/app/actions";
+import type { LibraryItemInput } from "@/lib/library-write";
+import type { ComparisonSetup } from "@/lib/ranking-flow";
 import type { Bucket, LadderItem } from "@/lib/ranking";
 
 /**
