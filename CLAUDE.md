@@ -672,6 +672,12 @@ traps a second time in Swift.
 | `GET /album/[id]`, `/artist/[id]` | detail, with the user's standing on each item |
 | `GET /library` | every saved row, unpaged |
 | `POST /library`, `/library/rate`, `/library/remove` | the three mutations |
+| `GET /stats?range=` | the whole dashboard, plus the user's hidden-module list |
+| `GET /spotify`, `POST`, `DELETE` | link status, run the sync, disconnect |
+| `GET /spotify/link` | the OAuth URL to open |
+| `GET /ranking?itemType=`, `PUT` | whether comparisons apply; the on/off switch |
+| `POST /ranking/setup`, `/compare`, `/score` | candidates, a placement, a typed score |
+| `GET /discover` | the two suggestion rows; auth optional |
 
 Four things about it are load-bearing:
 
@@ -716,11 +722,92 @@ client an id its own library doesn't contain. Both `POST /library` and
 reach a dev server over plain HTTP. That is the narrow exception, not
 `NSAllowsArbitraryLoads`; production is HTTPS and unaffected.
 
-Still web-only, and deliberately so for now: `/stats`, `/settings`, the comparison
-ranking flow, and the Spotify export. The app rates with a slider through
-`rateItem` — the same path the site uses when ranking is off — rather than through
-`rateByNumber`, so it does not start building a ladder for someone who never
-turned the feature on.
+**5. Spotify linking works without a second redirect URI.** Spotify only accepts
+the redirect URIs registered in its dashboard, and there is no reason connecting
+from the app should require adding one — so `/api/spotify/callback` now serves
+both clients and tells them apart by the `state`:
+
+- **Website.** A random string matched against an httpOnly cookie. Ends on
+  `/library` with a notice, exactly as before.
+- **App.** A short-lived JWT naming the user, signed with `AUTH_SECRET`
+  (`issueLinkState`). There is no cookie to match, because the consent screen runs
+  in an `ASWebAuthenticationSession` rather than the browser that started the
+  flow — so the *signature* is what proves the callback belongs to a flow this
+  server started. Ends on `recordcrate://spotify?status=…`, which is what closes
+  the web view.
+
+The app branch is checked first and only succeeds on a validly signed state, so a
+browser that merely lacks a session cannot fall into it. A separate JWT audience
+from the session token means neither can be spent as the other.
+
+The sync itself is `exportWantToListenFor(userId)` in `src/lib/spotify-export.ts`,
+split out of `spotify-actions.ts` on the same principle as the library writes —
+a two-way sync whose correctness rests on `PlaylistTrack` recording exactly what
+this app added must not exist twice.
+
+**6. The ranking ladder is shared too.** `src/lib/ranking-flow.ts` holds
+`comparisonSetupFor`, `rateByComparisonFor`, `rateByNumberFor`,
+`setRankingEnabledFor` and `rankingModeFor`; `actions.ts` is wrappers over them.
+This one matters more than the others: the ladder's correctness rests on rules
+that are only right in one place by accident — the seed direction, the re-score
+ordering, a typed score being written *before* the recompute — and every one of
+them is a silent wrong-answer bug, not a crash. A second implementation in Swift
+would have re-earned all five.
+
+The app therefore runs the identical flow: the setup call sends every candidate
+once, the binary search runs on the device so answering costs no request, and only
+the final slot is submitted for the server to re-resolve and re-score. `needed`
+comes back on the setup response as well as on `/ranking`, so the sheet can say
+*why* it is offering a slider instead of comparisons.
+
+**A tie is a third answer, and it bounds a neighbourhood rather than asserting
+equality.** "Too close to call" does not settle the rating. It says the item
+belongs *near* a rung — and the one question that cannot resolve which side of that
+rung it falls on is the one just declined — so the app asks up to two more, about
+the **neighbours** either side, which are a genuinely easier call. The result is
+`tiedWithId` plus `tieSide` on `/ranking/compare`.
+
+`scoreBesideNeighbour` then places the score just above or just below that rung,
+capped twice: at `TIE_DELTA` (0.3), and at **half the gap** to whatever sits on
+that side. The second cap is the important one — in a tightly packed bucket the
+neighbours can be a tenth apart, and a flat ±0.3 would leapfrog a record the user
+was never asked about, silently reordering the ladder. Measured: tying against 8.7
+with 9.5 above gives 9.0; with 8.9 above it gives 8.8.
+
+Writing the two as the *same* number, which an earlier version did, says something
+the user did not — a tie is a claim that a difference is small, not that there
+isn't one — and it makes two records indistinguishable in every list that sorts by
+score.
+
+The result still anchors (`ratingSource: "TIED"`), because a floating score would
+not survive the next recompute: `deriveBucketScores` spreads a run of floating
+items evenly across the gap between anchors, so a carefully placed near-tie would
+drift. `recomputeBucket` therefore treats **anything that is not `COMPARISON`** as
+an anchor rather than checking for `MANUAL` — a fourth source would inherit the
+safe behaviour, where a `=== "MANUAL"` check would silently have made it float.
+
+`ratingSource` is a String column read only by `ranking.ts`, so `TIED` needed no
+migration — but anything that starts reading it must treat unknown values as
+anchors, not assume the set is two.
+
+Still web-only, and deliberately so: `/settings` and its stats-module switches.
+The ranking on/off switch is on the app's Profile tab, since `/settings` is not
+ported and the flow is unreachable without it.
+
+**The app's chart palette is purple, and the website's is not.** `src/lib/viz.ts`
+keeps its validated blue/orange/green; the app rebuilt the same structure around
+its brand purple so the dashboard matches the tab bar and the score badges. The
+two rules that make either set honest are unchanged in both — three fixed
+categorical slots that never cycle, one colour for nominal categories. If the
+website ever wants to match, that set needs re-validating rather than copying.
+
+The **stats** dashboard is in the app, from the same `getDashboard()` call, and it
+honours `User.statsHidden`: the switches stay on the website rather than the app
+offering a second, disagreeing set of preferences. `/api/mobile/stats` also sends
+the module registry, so a block added to `STATS_MODULES` appears in the app
+without an app release. The range control scopes Activity only, and the grain is
+chosen server-side — otherwise a client could ask for 365 daily buckets and draw
+365 columns four pixels wide.
 
 ## Known Limitations
 - Songs are stored under a MusicBrainz *recording* id, which has no page of its own, so
