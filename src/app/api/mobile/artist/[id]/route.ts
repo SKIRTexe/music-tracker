@@ -3,6 +3,7 @@ import { getArtist, artistAlbums, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/prisma";
+import { artistAlbumPopularity } from "@/lib/popularity";
 
 /**
  * An artist and their studio discography, oldest first.
@@ -31,9 +32,12 @@ export const GET = async (
     return NextResponse.json({ error: "catalog_error" }, { status: 502 });
   }
 
-  const [albums, meta] = await Promise.all([
+  const [albums, meta, popularity] = await Promise.all([
     artistAlbums(id),
     prisma.artistMeta.findUnique({ where: { artistId: id }, select: { genres: true } }),
+    // One cached request covers the whole discography, which is what makes it
+    // affordable to show a fan count on every row.
+    artistAlbumPopularity(artist.name),
   ]);
 
   const userId = (await userIdFromRequest(req)) ?? undefined;
@@ -44,5 +48,6 @@ export const GET = async (
     genres: artist.genres.length ? artist.genres : meta?.genres ?? [],
     albums,
     existing: Object.fromEntries(byId),
+    popularity,
   });
 };

@@ -466,6 +466,41 @@ image to `--window-size`, so a narrow shot looks like a layout overflow that isn
 there. To check a real phone width, load the page in a 390px `<iframe>` and shoot
 the wrapper.
 
+## Spotify has no popularity left, so Deezer answers that
+
+`GET /artists/{id}` lost `genres`, `popularity` and `followers` in 2026. As of
+August 2026 `popularity` is gone from **track and album objects too** — absent
+from the payload, not empty. Verified directly. So the catalogue can no longer
+say whether a record is one people play.
+
+`src/lib/popularity.ts` gets that from Deezer, which needs no credentials and —
+the part that makes it affordable — answers in batches:
+
+    /album/{id}/tracks     every track's rank in one request
+    /artist/{id}/albums    every album's fan count in one request
+
+That is why it appears on the album and artist routes and **not on search**:
+those cost two cached requests each, while search would cost one lookup per
+result. Popularity is context for something you are already looking at.
+
+Four things to keep right:
+
+- **The two numbers are not the same kind of thing.** `fans` is absolute and
+  comparable between albums, which is what makes a discography readable at a
+  glance. `rank` is only meaningful against other tracks on the same record, so
+  it is sent raw and the app draws it as a bar rather than printing a number
+  nobody can interpret.
+- **Match the artist by follower count, not by name alone.** Searching Deezer for
+  "Radiohead" returns a soundalike with 492 followers *ahead* of the band — exact
+  name, wrong artist — and its empty discography then silently attaches no numbers
+  to anything. The same trap the catalogue hit with "Beatles HC" on MusicBrainz.
+  Most-followed exact match wins.
+- **It is not a rating.** It says what people play, not what is good. The copy says
+  "fans" for that reason; anything vaguer implies a play count nobody publishes.
+- **It must never fail the page.** Every lookup returns null on error and results
+  are cached for a week in `MbCache` — which is a plain url → body store despite
+  the name, and is reused rather than duplicated.
+
 ### Spotify withdrew artist genres, so MusicBrainz is back for that one job
 
 `GET /artists/{id}` **no longer returns `genres`, `popularity` or `followers`** —
@@ -678,6 +713,8 @@ traps a second time in Swift.
 | `GET /ranking?itemType=`, `PUT` | whether comparisons apply; the on/off switch |
 | `POST /ranking/setup`, `/compare`, `/score` | candidates, a placement, a typed score |
 | `GET /discover` | the two suggestion rows; auth optional |
+
+Popularity rides along on the album and artist routes — see below.
 
 Four things about it are load-bearing:
 

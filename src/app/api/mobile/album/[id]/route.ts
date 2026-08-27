@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAlbum, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
+import { albumPopularity } from "@/lib/popularity";
 
 /**
  * An album, its tracklist, and the user's standing on the album and on every
@@ -26,9 +27,12 @@ export const GET = async (
   }
 
   const userId = (await userIdFromRequest(req)) ?? undefined;
-  const [byId, songs] = await Promise.all([
+  const [byId, songs, popularity] = await Promise.all([
     getExistingEntries(userId, [album.id]),
     getSavedSongs(userId),
+    // Two cached Deezer requests. Never throws — an album page without
+    // popularity is correct, not an error.
+    albumPopularity(album.artistName, album.title),
   ]);
 
   const existing: Record<string, { status: string; rating: number | null }> = {};
@@ -41,5 +45,5 @@ export const GET = async (
     if (hit) existing[track.id] = hit;
   }
 
-  return NextResponse.json({ ...album, existing });
+  return NextResponse.json({ ...album, existing, popularity });
 };
