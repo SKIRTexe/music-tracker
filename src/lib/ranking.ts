@@ -49,11 +49,67 @@ export const BUCKET_LABELS: Record<Bucket, string> = {
  * never drag an album you merely liked down into a different verdict. A bucket's
  * items only ever move within their own band.
  */
-export const BANDS: Record<Bucket, { low: number; high: number }> = {
-  LOVED: { low: 6.8, high: 10 },
-  FINE: { low: 3.4, high: 6.7 },
-  DISLIKED: { low: 0, high: 3.3 },
+export interface Band { low: number; high: number }
+
+/**
+ * Where each bucket normally sits.
+ *
+ * These are *nominal*, not walls. The effective ceiling of a bucket is worked
+ * out per user in `ladderBands`, from the scores actually above it — because a
+ * fixed ceiling produces the one result this model is supposed to prevent:
+ * calling a record "it was fine", placing it above everything else you called
+ * fine, and still being handed 6.7 because that is where the band stopped.
+ */
+export const BANDS: Record<Bucket, Band> = {
+  LOVED: { low: 7, high: 10 },
+  FINE: { low: 4, high: 6.9 },
+  DISLIKED: { low: 0, high: 3.9 },
 };
+
+/**
+ * How far a bucket may stretch past its nominal ceiling when the bucket above is
+ * empty — so a library with nothing loved yet can still tell its best "fine"
+ * record apart from its worst, instead of compressing them all under 6.9.
+ */
+const REACH: Record<Bucket, number> = {
+  LOVED: 10,
+  FINE: 8.6,
+  DISLIKED: 5.4,
+};
+
+/** Kept between buckets so the order can never be read as a tie. */
+const BUCKET_GAP = 0.1;
+
+/**
+ * The score window each bucket actually gets, derived top-down from the items
+ * above it.
+ *
+ * The invariant is the *order*: everything loved outranks everything fine, which
+ * outranks everything disliked. Within that, the numbers stretch to fill the
+ * room available. A single loved record sits mid-band around 8.5, which lets the
+ * best "fine" record reach into the low 8s — and that is the whole point, since
+ * the alternative was a hard 6.7 that contradicted what the comparisons said.
+ *
+ * The trade this makes: adding a loved album can now nudge the numbers under it,
+ * because it lowers the ceiling the fine items are spread against. It cannot
+ * change anyone's *verdict* — the bucket is untouched, and the order is
+ * untouched — but the digits move, which the fixed bands used to prevent.
+ */
+export function ladderBands(scores: Record<Bucket, number[]>): Record<Bucket, Band> {
+  const bands = {} as Record<Bucket, Band>;
+  let ceiling = 10;
+
+  for (const bucket of BUCKETS) {
+    const nominal = BANDS[bucket];
+    const high = Math.max(nominal.low, Math.min(REACH[bucket], ceiling));
+    bands[bucket] = { low: nominal.low, high };
+
+    const own = scores[bucket] ?? [];
+    if (own.length > 0) ceiling = Math.min(...own) - BUCKET_GAP;
+    else ceiling = Math.min(ceiling, high);
+  }
+  return bands;
+}
 
 /**
  * Comparisons only start once there are this many rated items of the same type.
@@ -78,8 +134,8 @@ const FULL_SPREAD_AT = 5;
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
 /** The score for position `index` (0 = best) of `count` items in a bucket. */
-export function scoreFor(bucket: Bucket, index: number, count: number): number {
-  const { low, high } = BANDS[bucket];
+export function scoreFor(band: Band, index: number, count: number): number {
+  const { low, high } = band;
   const middle = (low + high) / 2;
   if (count <= 1) return round1(middle);
 
@@ -105,12 +161,12 @@ export function scoreFor(bucket: Bucket, index: number, count: number): number {
  * With no anchors at all this is the plain band spread, so an untouched bucket
  * behaves exactly as before and its best item can still be a 10.
  */
-export function deriveBucketScores(bucket: Bucket, anchors: (number | null)[]): number[] {
+export function deriveBucketScores(band: Band, anchors: (number | null)[]): number[] {
   const n = anchors.length;
-  const { low, high } = BANDS[bucket];
+  const { low, high } = band;
   if (n === 0) return [];
   if (anchors.every((a) => a === null)) {
-    return anchors.map((_, i) => scoreFor(bucket, i, n));
+    return anchors.map((_, i) => scoreFor(band, i, n));
   }
 
   const out = new Array<number>(n);
@@ -133,7 +189,7 @@ export function deriveBucketScores(bucket: Bucket, anchors: (number | null)[]): 
 
     for (let k = 0; k < run; k++) {
       let score: number;
-      if (above === null && below === null) score = scoreFor(bucket, k, run);
+      if (above === null && below === null) score = scoreFor(band, k, run);
       // Open at the anchored end, closed at the band edge, so the top of a
       // bucket can still reach 10 and the bottom can still reach the floor.
       else if (above === null) score = high - (high - below!) * (k / run);
@@ -238,30 +294,61 @@ export async function getLadder(userId: string, itemType: string): Promise<Ladde
  * moved because a *different* album was placed above it is not an opinion change,
  * and filling the activity feed with those would drown the real ones.
  */
-export async function recomputeBucket(
-  userId: string,
-  itemType: string,
-  bucket: Bucket
-): Promise<void> {
-  const items = await bucketItems(userId, itemType, bucket);
-  if (items.length === 0) return;
+export async function recomputeLadder(userId: string, itemType: string): Promise<void> {
+  // Top down, because each bucket's ceiling is the floor of the one above it.
+  // That is the whole reason this replaced a per-bucket recompute: a bucket can
+  // no longer be scored in isolation, since what "the top of fine" is worth
+  // depends on where the loved records actually landed.
+  const items: Record<Bucket, LadderItem[]> = {
+    LOVED: await bucketItems(userId, itemType, "LOVED"),
+    FINE: await bucketItems(userId, itemType, "FINE"),
+    DISLIKED: await bucketItems(userId, itemType, "DISLIKED"),
+  };
 
-  const count = items.length;
-  // Anchors are everything that is *not* a floating comparison placement: a typed
-  // score, and a tie. A tie asserts a number as firmly as typing one does — "this
-  // is the same as that" — so letting it float would immediately undo it, which is
-  // the one thing the user just said must not happen.
-  const scores = deriveBucketScores(
-    bucket,
-    items.map((item) => (item.source === "COMPARISON" ? null : item.rating))
-  );
+  const settled: Record<Bucket, number[]> = { LOVED: [], FINE: [], DISLIKED: [] };
+  const writes: { id: string; rating: number; rankPosition: number }[] = [];
 
-  await prisma.$transaction(
-    items.map((item, index) =>
-      prisma.albumLog.update({
-        where: { id: item.id },
+  for (const bucket of BUCKETS) {
+    const band = ladderBands(settled)[bucket];
+    const own = items[bucket];
+    if (own.length === 0) continue;
+
+    // Anchors are everything that is *not* a floating comparison placement: a
+    // typed score, and a tie. A tie asserts a number as firmly as typing one
+    // does — "this is the same as that" — so letting it float would immediately
+    // undo it, which is the one thing the user just said must not happen.
+    //
+    // An anchor outside its bucket's window is clamped into it rather than
+    // honoured, or a stale typed score from the old fixed bands could hold a
+    // ceiling down for every item beneath it.
+    const anchors = own.map((item) =>
+      item.source === "COMPARISON"
+        ? null
+        : item.rating == null
+          ? null
+          : Math.min(band.high, Math.max(band.low, item.rating))
+    );
+
+    const scores = deriveBucketScores(band, anchors);
+    settled[bucket] = scores;
+
+    const count = own.length;
+    own.forEach((item, index) => {
+      writes.push({
+        id: item.id,
+        rating: scores[index],
         // Highest position is best, so the top of the list gets the largest.
-        data: { rating: scores[index], rankPosition: count - 1 - index },
+        rankPosition: count - 1 - index,
+      });
+    });
+  }
+
+  if (writes.length === 0) return;
+  await prisma.$transaction(
+    writes.map((w) =>
+      prisma.albumLog.update({
+        where: { id: w.id },
+        data: { rating: w.rating, rankPosition: w.rankPosition },
       })
     )
   );
@@ -335,7 +422,7 @@ export async function placeItem(params: {
     },
   });
 
-  await recomputeBucket(userId, itemType, bucket);
+  await recomputeLadder(userId, itemType);
 
   const placed = await prisma.albumLog.findUnique({
     where: { id: logId },
@@ -413,7 +500,7 @@ export async function ensureSeeded(
     });
   }
 
-  for (const bucket of BUCKETS) await recomputeBucket(userId, itemType, bucket);
+  await recomputeLadder(userId, itemType);
 }
 
 export type RankingState = {
