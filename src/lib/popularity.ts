@@ -42,6 +42,33 @@ const TIMEOUT_MS = 6_000;
  */
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * How long a page will wait for popularity before rendering without it.
+ *
+ * This is decoration on a page that is already useful, and it depends on a third
+ * party the app does not control. A cold lookup that runs long must not hold the
+ * response — the client reports any timeout as "can't reach the server", so a
+ * slow Deezer presents as an outage of *this* app, which is both wrong and the
+ * most alarming possible way to say "no fan count today".
+ */
+const DEADLINE_MS = 2_500;
+
+export const NO_POPULARITY: AlbumPopularity = { fans: null, tracks: {} };
+
+/**
+ * Resolve `work`, or give up and return `fallback`.
+ *
+ * The abandoned promise is deliberately *not* cancelled: it keeps running to
+ * populate the cache, so the visit that waited is the only one that misses out.
+ * Callers hand it to `after()` so serverless does not freeze it mid-flight.
+ */
+export function withDeadline<T>(work: Promise<T>, fallback: T, ms = DEADLINE_MS): Promise<T> {
+  return Promise.race([
+    work.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 export interface AlbumPopularity {
   /** Deezer fans for the album. Comparable between albums. */
   fans: number | null;

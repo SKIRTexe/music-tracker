@@ -3,7 +3,8 @@ import { getArtist, artistAlbums, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/prisma";
-import { artistAlbumPopularity } from "@/lib/popularity";
+import { artistAlbumPopularity, withDeadline } from "@/lib/popularity";
+import { after } from "next/server";
 
 /**
  * An artist and their studio discography, oldest first.
@@ -32,12 +33,17 @@ export const GET = async (
     return NextResponse.json({ error: "catalog_error" }, { status: 502 });
   }
 
+  // One cached request covers the whole discography. Bounded the same way as the
+  // album page: a discography without fan counts is still a discography.
+  const lookup = artistAlbumPopularity(artist.name);
+  after(async () => {
+    await lookup.catch(() => {});
+  });
+
   const [albums, meta, popularity] = await Promise.all([
     artistAlbums(id),
     prisma.artistMeta.findUnique({ where: { artistId: id }, select: { genres: true } }),
-    // One cached request covers the whole discography, which is what makes it
-    // affordable to show a fan count on every row.
-    artistAlbumPopularity(artist.name),
+    withDeadline(lookup, {} as Record<string, number>),
   ]);
 
   const userId = (await userIdFromRequest(req)) ?? undefined;

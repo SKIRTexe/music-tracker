@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getAlbum, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
-import { albumPopularity } from "@/lib/popularity";
+import { albumPopularity, withDeadline, NO_POPULARITY } from "@/lib/popularity";
+import { after } from "next/server";
 
 /**
  * An album, its tracklist, and the user's standing on the album and on every
@@ -27,12 +28,18 @@ export const GET = async (
   }
 
   const userId = (await userIdFromRequest(req)) ?? undefined;
+  // Two cached Deezer requests. Never throws, and never delays the page: past
+  // the deadline the album renders without it and the lookup finishes in the
+  // background, so the next visit has it.
+  const lookup = albumPopularity(album.artistName, album.title);
+  after(async () => {
+    await lookup.catch(() => {});
+  });
+
   const [byId, songs, popularity] = await Promise.all([
     getExistingEntries(userId, [album.id]),
     getSavedSongs(userId),
-    // Two cached Deezer requests. Never throws — an album page without
-    // popularity is correct, not an error.
-    albumPopularity(album.artistName, album.title),
+    withDeadline(lookup, NO_POPULARITY),
   ]);
 
   const existing: Record<string, { status: string; rating: number | null }> = {};
