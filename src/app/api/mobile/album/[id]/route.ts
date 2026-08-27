@@ -31,7 +31,7 @@ export const GET = async (
   // Two cached Deezer requests. Never throws, and never delays the page: past
   // the deadline the album renders without it and the lookup finishes in the
   // background, so the next visit has it.
-  const lookup = albumPopularity(album.artistName, album.title);
+  const lookup = albumPopularity(album.artistName, album.title, album.totalTracks);
   after(async () => {
     await lookup.catch(() => {});
   });

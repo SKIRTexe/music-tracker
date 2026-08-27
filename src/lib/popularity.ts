@@ -131,20 +131,49 @@ async function cachedGet<T>(path: string): Promise<T | null> {
 }
 
 interface DeezerSearch<T> { data?: T[] }
-interface DeezerAlbum { id: number; title: string; fans?: number }
+interface DeezerAlbum { id: number; title: string; fans?: number; nb_tracks?: number; record_type?: string }
 interface DeezerTrack { title: string; rank?: number }
 interface DeezerArtist { id: number; name: string; nb_fan?: number }
 
-/** Find the Deezer album that matches an artist and title. */
-async function findAlbum(artist: string, title: string): Promise<DeezerAlbum | null> {
+/**
+ * Find the Deezer album that matches an artist and title.
+ *
+ * Title alone is not enough, and taking the first hit is actively wrong. A
+ * modern record is released as a run of singles under the *same name* as the
+ * album, so searching "Stick Season" returns five one-track releases before the
+ * fourteen-track album — all exact title matches. Picking the first gave a
+ * tracklist of one, so exactly one song on the album got a play bar and the
+ * other thirteen silently got none.
+ *
+ * `expectedTracks` is the Spotify album's own count, which settles it: prefer
+ * the candidate whose length is closest, and break remaining ties on the longest,
+ * since a deluxe edition still carries the standard tracks a page needs.
+ */
+async function findAlbum(
+  artist: string,
+  title: string,
+  expectedTracks?: number
+): Promise<DeezerAlbum | null> {
   const query = encodeURIComponent(`artist:"${artist.replace(/"/g, "")}" album:"${title.replace(/"/g, "")}"`);
-  const found = await cachedGet<DeezerSearch<DeezerAlbum>>(`/search/album?q=${query}&limit=5`);
+  const found = await cachedGet<DeezerSearch<DeezerAlbum>>(`/search/album?q=${query}&limit=25`);
   const items = found?.data ?? [];
   if (items.length === 0) return null;
 
-  // Prefer an exact title match; Deezer will happily return a deluxe edition or
-  // a tribute record for a loose query.
-  return items.find((a) => key(a.title) === key(title)) ?? items[0];
+  const exact = items.filter((a) => key(a.title) === key(title));
+  const pool = exact.length > 0 ? exact : items;
+
+  return [...pool].sort((a, b) => {
+    const aTracks = a.nb_tracks ?? 0;
+    const bTracks = b.nb_tracks ?? 0;
+    if (expectedTracks) {
+      const diff = Math.abs(aTracks - expectedTracks) - Math.abs(bTracks - expectedTracks);
+      if (diff !== 0) return diff;
+    }
+    // An album beats a single of the same name even when no count was given.
+    const rank = (x: DeezerAlbum) => (x.record_type === "album" ? 0 : 1);
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    return bTracks - aTracks;
+  })[0];
 }
 
 /**
@@ -156,11 +185,12 @@ async function findAlbum(artist: string, title: string): Promise<DeezerAlbum | n
  */
 export async function albumPopularity(
   artist: string,
-  title: string
+  title: string,
+  expectedTracks?: number
 ): Promise<AlbumPopularity> {
   const empty: AlbumPopularity = { fans: null, tracks: {} };
 
-  const album = await findAlbum(artist, title);
+  const album = await findAlbum(artist, title, expectedTracks);
   if (!album) return empty;
 
   const detail = await cachedGet<DeezerAlbum>(`/album/${album.id}`);
