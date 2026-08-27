@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { issueToken } from "@/lib/mobile-auth";
+import { failureCode, issueToken } from "@/lib/mobile-auth";
 
 /**
  * Create an account and return a token, so the app can sign someone up without

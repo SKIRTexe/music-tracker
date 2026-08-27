@@ -74,6 +74,24 @@ export async function verifyCredentials(email: string, password: string) {
   return { id: user.id, email: user.email, name: user.name };
 }
 
+/**
+ * Turn a thrown error into something a 500 can carry.
+ *
+ * The code only — `P1001`, `P2024` — never the message, which can contain a
+ * connection string. Without it a failure is an opaque 500 and the only way to
+ * tell "cannot reach the database" from "the pool is exhausted" is to guess,
+ * which is exactly the position this left us in.
+ */
+export function failureCode(error: unknown): string {
+  if (error && typeof error === "object") {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+    const name = (error as { name?: unknown }).name;
+    if (typeof name === "string") return name;
+  }
+  return "unknown";
+}
+
 export type Handler = (req: Request, userId: string) => Promise<Response>;
 
 /**
@@ -93,7 +111,10 @@ export function authed(handler: Handler) {
       return await handler(req, userId);
     } catch (err) {
       console.error("mobile api:", err instanceof Error ? err.message : err);
-      return NextResponse.json({ error: "server_error" }, { status: 500 });
+      return NextResponse.json(
+        { error: "server_error", code: failureCode(err) },
+        { status: 500 }
+      );
     }
   };
 }
