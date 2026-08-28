@@ -33,6 +33,15 @@ export interface SearchItem {
   detailId: string | null;
   /** Songs only: the album the track belongs to. */
   parentAlbum?: string;
+  /**
+   * Albums only. Both are already in the discography payload, and both exist so
+   * an artist page can be re-sorted without a second request: `year` alone
+   * cannot separate two records from the same year, and track count is the only
+   * honest measure of length here — real durations would cost one tracklist
+   * fetch per album.
+   */
+  totalTracks?: number;
+  releaseDate?: string;
 }
 
 export interface ArtistItem {
@@ -190,6 +199,8 @@ function albumToItem(a: SpAlbum): SearchItem {
     year: a.release_date ? a.release_date.slice(0, 4) : null,
     coverArtUrl: pickImage(a.images),
     detailId: a.id,
+    totalTracks: a.total_tracks,
+    releaseDate: a.release_date,
   };
 }
 
