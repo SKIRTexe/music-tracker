@@ -2,9 +2,11 @@ import { getArtist, artistAlbums, CatalogNotFound } from "@/lib/catalog";
 import { cachedArtistGenres } from "@/lib/enrich";
 import { auth } from "@/lib/auth";
 import { getExistingEntries } from "@/lib/library";
-import { ResultCard } from "@/components/ResultCard";
+import { Discography } from "@/components/Discography";
+import { artistAlbumPopularity, withDeadline } from "@/lib/popularity";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +33,21 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
     );
   }
 
+  // One cached Deezer request covers the whole discography, and it is bounded:
+  // a discography without fan counts is still a discography, so a slow lookup
+  // must not hold the page. `after` lets the request finish and warm the cache
+  // for the next visitor even when this render gave up waiting on it.
+  const lookup = artistAlbumPopularity(artist.name);
+  after(async () => {
+    await lookup.catch(() => {});
+  });
+
   // Spotify withdrew artist genres, so these come from the MusicBrainz cache.
-  const [albums, session, genres] = await Promise.all([
+  const [albums, session, genres, popularity] = await Promise.all([
     artistAlbums(artist.id),
     auth(),
     cachedArtistGenres(artist.id, artist.name),
+    withDeadline(lookup, {} as Record<string, number>),
   ]);
   const existing = await getExistingEntries(session?.user?.id, albums.map((a) => a.id));
 
@@ -86,27 +98,19 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      <section>
-        <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
-          Discography
-          <span className="ml-2 text-zinc-700 tabular-nums">{albums.length}</span>
-        </h2>
-
-        {albums.length === 0 ? (
+      {albums.length === 0 ? (
+        <section>
+          <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">Discography</h2>
           <p className="text-zinc-600 text-sm">No albums found for this artist.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-5 sm:gap-5">
-            {albums.map((album) => (
-              <ResultCard
-                key={album.id}
-                item={album}
-                isLoggedIn={!!session?.user}
-                existing={existing.get(album.id) ?? null}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+        </section>
+      ) : (
+        <Discography
+          albums={albums}
+          popularity={popularity}
+          isLoggedIn={!!session?.user}
+          existing={Object.fromEntries(existing)}
+        />
+      )}
     </div>
   );
 }

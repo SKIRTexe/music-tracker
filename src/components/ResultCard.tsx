@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import type { LibraryItemInput } from "@/lib/library-write";
 import { RatePopover } from "@/components/RatePopover";
-import { STATUS_LABELS } from "@/lib/statuses";
+import { ScoreBadge, StatusMarker, PlaceBadge, CoverTag } from "@/components/Badges";
 import { RankFlow } from "@/components/RankFlow";
 import type { SearchItem } from "@/lib/catalog";
 
@@ -22,10 +22,16 @@ export function ResultCard({
   item,
   isLoggedIn,
   existing,
+  place,
+  caption,
 }: {
   item: SearchItem;
   isLoggedIn: boolean;
   existing?: ExistingEntry | null;
+  /** Where this record places among the artist's, by following. 1 is biggest. */
+  place?: number;
+  /** Replaces the artist line — a discography repeats one artist on every card. */
+  caption?: string;
 }) {
   const isSong = item.itemType === "SONG";
 
@@ -126,13 +132,15 @@ export function ResultCard({
     artistMbid: item.artistId,
   });
 
-  // Visible by default so it exists on touch; only pointer devices hide it until hover.
-  const triggerClass = saved
-    ? "bg-zinc-100 text-zinc-900"
-    : "bg-zinc-950/80 text-zinc-200 can-hover:opacity-0 can-hover:group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-800";
+  // Visible by default so it exists on touch; only pointer devices hide it until
+  // hover. A saved card shows the app's badge rather than a tick — the badge is
+  // the trigger, so the cover carries the score and the control at once instead
+  // of stacking two round things in the same corner.
+  const unsavedTrigger =
+    "w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center rounded-full text-sm bg-zinc-950/80 text-zinc-200 can-hover:opacity-0 can-hover:group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-800";
 
   const cover = (
-    <div className="aspect-square rounded-lg overflow-hidden bg-zinc-800">
+    <div className="aspect-square rounded-lg overflow-hidden bg-zinc-800 relative">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -150,6 +158,13 @@ export function ResultCard({
           </span>
         </div>
       )}
+
+      {/* A place where a discography shows one, otherwise the song marker. Never
+          both: only albums are ranked and only songs are tagged, so they cannot
+          collide. */}
+      <div className="absolute bottom-1.5 left-1.5 pointer-events-none">
+        {place != null ? <PlaceBadge place={place} /> : isSong ? <CoverTag text="Song" /> : null}
+      </div>
     </div>
   );
 
@@ -182,9 +197,17 @@ export function ResultCard({
         <button
           onClick={() => setMenuOpen((o) => !o)}
           aria-label={saved ? "Edit library entry" : "Add to library"}
-          className={`absolute top-1 right-1 w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center rounded-full text-sm transition-all ${triggerClass} ${menuOpen ? "opacity-100" : ""}`}
+          className={`absolute top-1 right-1 flex items-center justify-center transition-all ${
+            saved ? "" : unsavedTrigger
+          } ${menuOpen ? "opacity-100" : ""}`}
         >
-          {saved ? "✓" : "+"}
+          {saved?.rating != null ? (
+            <ScoreBadge rating={saved.rating} compact />
+          ) : saved ? (
+            <StatusMarker status={saved.status as "LISTENED" | "WANT"} />
+          ) : (
+            "+"
+          )}
         </button>
       ) : (
         <Link
@@ -201,25 +224,17 @@ export function ResultCard({
         <p className="text-xs font-medium text-zinc-200 line-clamp-1" title={item.title}>
           {item.title}
         </p>
-        <p className="text-xs text-zinc-500 truncate" title={item.artistName}>
-          {item.artistName}
+        <p className="text-xs text-zinc-500 truncate" title={caption ?? item.artistName}>
+          {caption ?? item.artistName}
         </p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          {isSong && (
-            <span className="text-[9px] px-1 py-px rounded bg-zinc-800 text-zinc-400 tracking-wide leading-none">
-              Song
-            </span>
-          )}
-          {item.year && <span className="text-[10px] text-zinc-600 tabular-nums">{item.year}</span>}
-          {saved?.rating != null && (
-            <span className="text-[10px] font-semibold text-zinc-300 tabular-nums">
-              {saved.rating.toFixed(1)}
-            </span>
-          )}
-          {saved && saved.rating == null && (
-            <span className="text-[10px] text-zinc-500">{STATUS_LABELS[saved.status]}</span>
-          )}
-        </div>
+        {/* The cover carries the score, the status and the song tag now, so
+            repeating them here is noise. Only the year is left, and only when
+            the line above is not already showing it. */}
+        {caption == null && item.year && (
+          <div className="mt-0.5">
+            <span className="text-[10px] text-zinc-600 tabular-nums">{item.year}</span>
+          </div>
+        )}
       </div>
 
       {menuOpen && (

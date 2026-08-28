@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { STATUS_LABELS } from "@/lib/statuses";
+import { ScoreBadge, StatusMarker, CoverTag } from "@/components/Badges";
 
 export type LibraryEntry = {
   id: string;
@@ -33,7 +33,7 @@ export function LibraryItemCard({
   const href = isSong ? null : `/album/${entry.mbid}`;
 
   const cover = (
-    <div className="aspect-square rounded-lg overflow-hidden bg-zinc-800">
+    <div className="aspect-square rounded-lg overflow-hidden bg-zinc-800 relative">
       {entry.coverUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -47,6 +47,21 @@ export function LibraryItemCard({
           <span className="text-zinc-500 text-xs text-center leading-snug line-clamp-3">
             {entry.albumTitle}
           </span>
+        </div>
+      )}
+
+      {/* The same badges as the app and as a search result, so a shelf reads for
+          "what have I rated" without reading a single title. */}
+      <div className="absolute top-1.5 right-1.5 pointer-events-none">
+        {entry.rating != null ? (
+          <ScoreBadge rating={entry.rating} compact />
+        ) : (
+          <StatusMarker status={entry.status === "LISTENED" ? "LISTENED" : "WANT"} />
+        )}
+      </div>
+      {isSong && (
+        <div className="absolute bottom-1.5 left-1.5 pointer-events-none">
+          <CoverTag text="Song" />
         </div>
       )}
     </div>
@@ -67,32 +82,13 @@ export function LibraryItemCard({
           {entry.albumTitle}
         </p>
         <p className="text-xs text-zinc-500 truncate">{entry.artistName}</p>
-        <div className="flex items-center gap-1.5 mt-1">
-          {isSong && (
-            <span className="text-[9px] px-1 py-px rounded bg-zinc-800 text-zinc-400 tracking-wide leading-none">
-              Song
-            </span>
-          )}
-          {entry.rating != null ? (
-            <span className="flex items-baseline gap-0.5">
-              <span className="text-sm font-bold text-zinc-100 tabular-nums leading-none">
-                {entry.rating.toFixed(1)}
-              </span>
-              <span className="text-[10px] text-zinc-600 leading-none">/10</span>
-            </span>
-          ) : (
-            <span className="text-[10px] text-zinc-500">
-              {STATUS_LABELS[entry.status] ?? entry.status}
-            </span>
-          )}
-        </div>
       </div>
 
       {onRemove && (
         <button
           onClick={() => onRemove(entry.mbid)}
           aria-label={`Remove ${entry.albumTitle}`}
-          className="absolute top-1 right-1 can-hover:opacity-0 can-hover:group-hover:opacity-100 focus:opacity-100 transition-opacity bg-zinc-950/80 rounded-full w-8 h-8 sm:w-6 sm:h-6 text-[11px] text-zinc-300 hover:text-zinc-100"
+          className="absolute top-1 left-1 can-hover:opacity-0 can-hover:group-hover:opacity-100 focus:opacity-100 transition-opacity bg-zinc-950/80 rounded-full w-8 h-8 sm:w-6 sm:h-6 text-[11px] text-zinc-300 hover:text-zinc-100"
         >
           ✕
         </button>

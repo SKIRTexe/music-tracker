@@ -1,3 +1,4 @@
+import { popularityKey } from "@/lib/popularity-key";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -78,9 +79,7 @@ export interface AlbumPopularity {
 
 /** Lowercase, strip punctuation — the same shape as `songKey`, and for the same
  *  reason: "Exit Music (For A Film)" must match across two catalogues. */
-function key(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
+const key = popularityKey;
 
 /**
  * A cached GET.

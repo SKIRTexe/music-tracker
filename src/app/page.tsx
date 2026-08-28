@@ -34,13 +34,13 @@ function SearchBar({ defaultValue, type, big }: { defaultValue: string; type: Se
         autoComplete="off"
         autoFocus={big}
         aria-label="Search"
-        className={`flex-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 ${
+        className={`flex-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand-500/60 ${
           big ? "px-4 py-3 text-base" : "px-3 py-2.5 text-base sm:text-sm"
         }`}
       />
       <button
         type="submit"
-        className={`bg-zinc-100 hover:bg-white rounded text-zinc-900 font-medium transition-colors ${
+        className={`bg-brand-600 hover:bg-brand-500 rounded text-white font-medium transition-colors ${
           big ? "px-6 py-3 text-base" : "px-4 py-2.5 text-base sm:text-sm"
         }`}
       >
@@ -119,8 +119,10 @@ export default async function HomePage({
               <Link
                 key={key}
                 href={`/?q=${encodeURIComponent(query)}${key === "all" ? "" : `&type=${key}`}`}
-                className={`px-3 py-1 text-xs rounded transition-colors ${
-                  type === key ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+                className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                  type === key
+                    ? "bg-brand-500/15 text-brand-500 ring-1 ring-inset ring-brand-500/30"
+                    : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 {label}
