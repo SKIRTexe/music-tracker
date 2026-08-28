@@ -14,10 +14,12 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { artistAlbumPopularity, relatedArtists } from "@/lib/popularity";
 import {
   discoverByGenre,
   artistsByIds,
   SEARCH_PAGE_SIZE,
+  search,
   type ArtistItem,
   type GenreResults,
   type SearchItem,
@@ -72,13 +74,79 @@ const DEFAULT_SEEDS = [
 export interface Discover {
   albums: SearchItem[];
   artists: ArtistItem[];
-  /** What the rows were seeded from, so the page can say why they are there. */
+  /** Genres the rows were seeded from, on the fallback path only. */
   genres: string[];
-  /** Whether those genres came from the user's library or from the defaults. */
+  /** Artists the rows were seeded from — the good path. */
+  seeds: string[];
+  /** Whether the seed came from the library or from the cold-start defaults. */
   personal: boolean;
 }
 
-const EMPTY: Discover = { albums: [], artists: [], genres: [], personal: false };
+const EMPTY: Discover = { albums: [], artists: [], genres: [], seeds: [], personal: false };
+
+/** Ratings at or below this are not an endorsement, so they seed nothing. */
+const SEED_MIN_RATING = 6;
+
+/** How many rated artists are used as seeds. */
+const ARTIST_SEEDS = 3;
+
+/**
+ * Suggestions built from the artists you rated well.
+ *
+ * This is the good path, and it exists because genre seeding is too coarse to be
+ * useful: an artist's genres resolve to things like "rock" and "electronic", so
+ * a library of Radiohead and Kendrick Lamar was being handed David Guetta and
+ * Alan Walker. Genre says what a record is filed under, not what it sounds like.
+ *
+ * Deezer answers similarity directly, which Spotify stopped doing in 2024. Seeds
+ * are the artists you scored highest, so the suggestions follow your taste rather
+ * than your filing.
+ *
+ * An artist recommended by *several* of your seeds ranks above one recommended by
+ * a single seed. That overlap is the closest thing here to a real taste signal —
+ * it is the difference between "sounds like one record you liked" and "sits in
+ * the middle of what you like".
+ */
+async function seededByArtist(
+  saved: { genres: string[]; rating: number | null; artistName: string; mbid: string }[]
+): Promise<{ names: string[]; seeds: string[] } | null> {
+  const best = new Map<string, number>();
+  for (const row of saved) {
+    if (row.rating == null || row.rating < SEED_MIN_RATING) continue;
+    const current = best.get(row.artistName) ?? 0;
+    if (row.rating > current) best.set(row.artistName, row.rating);
+  }
+  if (best.size === 0) return null;
+
+  const seeds = [...best.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, ARTIST_SEEDS)
+    .map(([name]) => name);
+
+  // One request each, cached for a week.
+  const lists = await Promise.all(seeds.map((name) => relatedArtists(name)));
+
+  const owned = new Set(saved.map((r) => r.artistName.toLowerCase()));
+  const score = new Map<string, { name: string; votes: number; fans: number }>();
+
+  for (const list of lists) {
+    for (const artist of list) {
+      const k = artist.name.toLowerCase();
+      // An artist already in the library is not a discovery — you know them.
+      if (owned.has(k)) continue;
+      const entry = score.get(k) ?? { name: artist.name, votes: 0, fans: artist.fans };
+      entry.votes += 1;
+      entry.fans = Math.max(entry.fans, artist.fans);
+      score.set(k, entry);
+    }
+  }
+
+  const names = [...score.values()]
+    .sort((a, b) => b.votes - a.votes || b.fans - a.fans)
+    .map((a) => a.name);
+
+  return names.length > 0 ? { names, seeds } : null;
+}
 
 /**
  * Days since the epoch. The rows turn over daily rather than on every load —
@@ -185,6 +253,17 @@ export async function getDiscover(userId?: string): Promise<Discover> {
       })
     : [];
 
+  // Similar-artist seeding first. Genre seeding is the fallback, not the plan:
+  // it only knows what a record is filed under, which is why it kept offering
+  // stadium dance music to a library of guitar records.
+  const byArtist = await seededByArtist(saved);
+  if (byArtist) {
+    const resolved = await resolveSuggestions(byArtist.names, saved);
+    if (resolved.albums.length > 0 || resolved.artists.length > 0) {
+      return { ...resolved, genres: [], seeds: byArtist.seeds, personal: true };
+    }
+  }
+
   const top = rankSeeds(saved);
   const personal = top.length > 0;
   const candidates = personal
@@ -272,5 +351,71 @@ export async function getDiscover(userId?: string): Promise<Discover> {
   }
 
   if (albums.length === 0 && artists.length === 0) return EMPTY;
-  return { albums, artists, genres, personal };
+  return { albums, artists, genres, seeds: [], personal };
+}
+
+
+/** Matches `popularity.ts`, so titles line up across the two catalogues. */
+function albumKey(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Turn recommended artist *names* into things the app can open.
+ *
+ * Deezer knows the similarity; Spotify owns the ids every screen navigates by, so
+ * each name has to be looked up once. Names are matched exactly — a fuzzy hit
+ * would put a tribute act in a row that claims to be a recommendation.
+ *
+ * The two rows draw from different parts of the ranking so they cannot show the
+ * same act twice: the strongest recommendations become the album row, the next
+ * ones the artist row.
+ */
+async function resolveSuggestions(
+  names: string[],
+  saved: { mbid: string; artistName: string; artistMbid: string | null }[]
+): Promise<{ albums: SearchItem[]; artists: ArtistItem[] }> {
+  const savedAlbums = new Set(saved.map((r) => r.mbid));
+  const forAlbums = names.slice(0, ALBUMS_SHOWN);
+  const forArtists = names.slice(ALBUMS_SHOWN, ALBUMS_SHOWN + ARTISTS_SHOWN);
+
+  const [albumHits, artistHits] = await Promise.all([
+    Promise.all(
+      forAlbums.map(async (name) => {
+        const [found, fans] = await Promise.all([
+          search(name, { albums: true, songs: false, artists: false, limit: 10 }),
+          artistAlbumPopularity(name),
+        ]);
+
+        const mine = found.albums.filter(
+          (a) => a.artistName.toLowerCase() === name.toLowerCase() && !savedAlbums.has(a.id)
+        );
+        if (mine.length === 0) return undefined;
+
+        /*
+         * Their best-known record, not whatever Spotify sorts first.
+         *
+         * Sorting first gave Drake's "ICEMAN", Future's "The Real Me" and J.
+         * Cole's "The Fall-Off" — obscure or not even released. A row that tells
+         * you where to start with an artist has to name the record people
+         * actually know, so the pick is the one with the most followers.
+         */
+        const ranked = [...mine].sort(
+          (a, b) => (fans[albumKey(b.title)] ?? 0) - (fans[albumKey(a.title)] ?? 0)
+        );
+        return ranked[0];
+      })
+    ),
+    Promise.all(
+      forArtists.map(async (name) => {
+        const found = await search(name, { artists: true, albums: false, songs: false, limit: 10 });
+        return found.artists.find((a) => a.name.toLowerCase() === name.toLowerCase());
+      })
+    ),
+  ]);
+
+  return {
+    albums: albumHits.filter((a): a is SearchItem => !!a),
+    artists: artistHits.filter((a): a is ArtistItem => !!a),
+  };
 }

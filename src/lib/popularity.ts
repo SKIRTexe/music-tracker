@@ -211,6 +211,47 @@ export async function albumPopularity(
  * one request returns every album with its fans, so a whole discography can be
  * ranked without a lookup per row.
  */
+/**
+ * The Deezer artist behind a name.
+ *
+ * Split out because two features need it and both need the same guard: an exact
+ * name match is not enough, and taking the first hit is worse.
+ */
+async function findArtist(artist: string): Promise<DeezerArtist | null> {
+  const query = encodeURIComponent(artist);
+  const found = await cachedGet<DeezerSearch<DeezerArtist>>(`/search/artist?q=${query}&limit=25`);
+  const candidates = (found?.data ?? []).filter((a) => key(a.name) === key(artist));
+  return candidates.sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0] ?? null;
+}
+
+/** An artist Deezer thinks sounds like one you already know. */
+export interface RelatedArtist {
+  name: string;
+  fans: number;
+}
+
+/**
+ * Artists similar to this one.
+ *
+ * The signal the catalogue cannot provide: Spotify withdrew
+ * `/artists/{id}/related-artists` in November 2024, which is why suggestions had
+ * been falling back to genre search — and why a library of Radiohead and Kendrick
+ * Lamar was being offered David Guetta, since "electronic" is what a broad genre
+ * seed resolves to.
+ *
+ * One request per artist, cached for a week, and the response already carries
+ * follower counts, so ranking needs nothing further.
+ */
+export async function relatedArtists(artist: string): Promise<RelatedArtist[]> {
+  const match = await findArtist(artist);
+  if (!match) return [];
+
+  const related = await cachedGet<DeezerSearch<DeezerArtist>>(`/artist/${match.id}/related?limit=25`);
+  return (related?.data ?? [])
+    .filter((a) => a.name && key(a.name) !== key(artist))
+    .map((a) => ({ name: a.name, fans: a.nb_fan ?? 0 }));
+}
+
 export async function artistAlbumPopularity(artist: string): Promise<Record<string, number>> {
   const query = encodeURIComponent(artist);
   const found = await cachedGet<DeezerSearch<DeezerArtist>>(`/search/artist?q=${query}&limit=25`);
