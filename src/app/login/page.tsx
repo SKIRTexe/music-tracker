@@ -53,7 +53,12 @@ export default async function LoginPage({
           />
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm text-zinc-400 mb-1">Password</label>
+          <div className="mb-1 flex items-baseline justify-between">
+            <label htmlFor="password" className="block text-sm text-zinc-400">Password</label>
+            <Link href="/forgot" className="text-xs text-zinc-500 hover:text-zinc-300">
+              Forgot?
+            </Link>
+          </div>
           <input
             id="password"
             name="password"
@@ -64,7 +69,7 @@ export default async function LoginPage({
         </div>
         <button
           type="submit"
-          className="w-full py-2 bg-zinc-100 hover:bg-white rounded-md text-zinc-900 font-semibold transition-colors"
+          className="w-full py-2 bg-brand-600 hover:bg-brand-500 rounded-md text-white font-semibold transition-colors"
         >
           Sign in
         </button>
