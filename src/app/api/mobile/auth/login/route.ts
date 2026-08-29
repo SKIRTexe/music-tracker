@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clientKey, rateLimit, tooMany } from "@/lib/rate-limit";
 import { failureCode, issueToken, verifyCredentials } from "@/lib/mobile-auth";
 
 /**
@@ -10,6 +11,13 @@ import { failureCode, issueToken, verifyCredentials } from "@/lib/mobile-auth";
  * which is honest enough: there is no password that would work.
  */
 export async function POST(req: Request) {
+  // Ten tries a minute. Enough that a person mistyping a password never
+  // notices, and few enough that guessing is not a strategy — each attempt
+  // costs a bcrypt verification at cost 12, so this protects the CPU as well as
+  // the account.
+  const limit = await rateLimit(clientKey(req, "login"), 10, 60_000);
+  if (!limit.ok) return tooMany(limit.retryAfter);
+
   let body: { email?: string; password?: string };
   try {
     body = await req.json();

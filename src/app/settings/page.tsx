@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RankingToggle } from "@/components/RankingToggle";
 import { StatsModulesForm } from "@/components/StatsModulesForm";
+import { DeleteAccount } from "@/components/DeleteAccount";
 import { RANKING_MIN_RATED } from "@/lib/ranking";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const [user, ratedAlbums] = await Promise.all([
+  const [user, ratedAlbums, savedItems] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
       select: { rankingEnabled: true, statsHidden: true },
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
     prisma.albumLog.count({
       where: { userId: session.user.id, itemType: "ALBUM", rating: { not: null } },
     }),
+    prisma.albumLog.count({ where: { userId: session.user.id } }),
   ]);
 
   return (
@@ -65,6 +67,20 @@ export default async function SettingsPage() {
         </div>
 
         <StatsModulesForm hidden={user?.statsHidden ?? []} />
+      </section>
+
+      {/* Last, and visually separated. Required in the app by App Store review,
+          and offered here for the same reason it is there: someone who signed up
+          on the website should not have to install an app to leave. */}
+      <section className="border-t border-zinc-900 pt-8">
+        <div className="mb-3">
+          <h2 className="text-[10px] uppercase tracking-widest text-zinc-500">Account</h2>
+          <p className="mt-1 text-[11px] leading-snug text-zinc-600">
+            Deleting removes your library, your ratings and every record of them.
+            There is no export yet, so take anything you want to keep first.
+          </p>
+        </div>
+        <DeleteAccount savedItems={savedItems} />
       </section>
     </div>
   );

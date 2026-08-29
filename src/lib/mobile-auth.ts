@@ -19,7 +19,14 @@ import { prisma } from "@/lib/prisma";
  * intended. This is a parallel path, not a way into the session.
  *
  * Long-lived (90 days) on purpose. A native app that logs you out every fortnight
- * is a native app you stop opening, and the token carries nothing but a user id.
+ * is a native app you stop opening, and the token carries nothing but a user id
+ * and the token version it was minted at.
+ *
+ * That version is what makes a 90-day token safe to hand out. The token is
+ * stateless, so without it there was no way to end a session early: a stolen one
+ * stayed valid for three months, and the only lever was rotating `AUTH_SECRET`,
+ * which signs out every user on the website too. Bumping `User.tokenVersion`
+ * invalidates one person's tokens and nobody else's.
  */
 
 const ISSUER = "recordcrate";
@@ -35,7 +42,11 @@ function secret(): Uint8Array {
 }
 
 export async function issueToken(userId: string): Promise<string> {
-  return new SignJWT({})
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tokenVersion: true },
+  });
+  return new SignJWT({ ver: user?.tokenVersion ?? 0 })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuer(ISSUER)
@@ -55,11 +66,42 @@ export async function userIdFromRequest(req: Request): Promise<string | null> {
       issuer: ISSUER,
       audience: AUDIENCE,
     });
-    return typeof payload.sub === "string" ? payload.sub : null;
+    if (typeof payload.sub !== "string") return null;
+
+    // The signature only proves the token was minted here, not that it is still
+    // wanted. One indexed lookup by primary key is the price of being able to
+    // end a session at all.
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { tokenVersion: true },
+    });
+    // A deleted account fails here too: no row, no user id.
+    if (!user) return null;
+    // Tokens minted before this predate the version claim; treating a missing
+    // claim as 0 keeps every existing sign-in working rather than logging the
+    // whole userbase out on deploy.
+    const version = typeof payload.ver === "number" ? payload.ver : 0;
+    if (version !== user.tokenVersion) return null;
+
+    return payload.sub;
   } catch {
     // Expired, forged, or signed with a rotated secret — all the same answer here.
     return null;
   }
+}
+
+/**
+ * End every mobile session this user has.
+ *
+ * Used by "sign out everywhere" and by account deletion — though deletion no
+ * longer strictly needs it, since a token whose subject has no row is rejected
+ * anyway. Belt and braces: the two paths should not both have to be right.
+ */
+export async function revokeTokens(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { tokenVersion: { increment: 1 } },
+  });
 }
 
 /** Check a login. Returns the user, or null for both "no such email" and "wrong

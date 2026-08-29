@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clientKey, rateLimit, tooMany } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { failureCode, issueToken } from "@/lib/mobile-auth";
@@ -13,6 +14,12 @@ import { failureCode, issueToken } from "@/lib/mobile-auth";
  * would produce an account that only one of them can log into.
  */
 export async function POST(req: Request) {
+  // Five an hour. Nobody legitimately creates six accounts from one address in
+  // an hour, and without this the table can be filled by a loop — which is not
+  // hypothetical: one unauthenticated request was all it took.
+  const limit = await rateLimit(clientKey(req, "register"), 5, 60 * 60_000);
+  if (!limit.ok) return tooMany(limit.retryAfter);
+
   let body: { name?: string; email?: string; password?: string };
   try {
     body = await req.json();

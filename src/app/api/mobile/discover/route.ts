@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { getDiscover } from "@/lib/discover";
 import { getExistingEntries } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
@@ -18,6 +19,15 @@ import { catalogConfigured } from "@/lib/catalog";
  * this is a row you scroll past, not a feature worth a request budget.
  */
 export const GET = async (req: Request) => {
+  // These are open proxies onto Spotify's quota — no sign-in required, because
+  // browsing the catalogue without an account is the point. The in-memory
+  // limiter is per-instance and therefore leaky, which is the right trade here:
+  // a database round trip on every search would cost more than the abuse it
+  // prevents, and this app has exhausted its connection pool before. It exists
+  // to stop one client hammering the quota, not to be exact.
+  const gate = memoryLimit(clientKey(req, "discover"), 60, 60_000);
+  if (!gate.ok) return tooMany(gate.retryAfter);
+
   if (!catalogConfigured()) {
     return NextResponse.json({ error: "catalog_unconfigured" }, { status: 503 });
   }

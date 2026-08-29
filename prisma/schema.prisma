@@ -37,6 +37,15 @@ model User {
   /// instead of being invisible to every existing account.
   statsHidden String[]
 
+  /// Bumped to invalidate every mobile token this user holds.
+  ///
+  /// The app's tokens live 90 days and are stateless, so before this there was
+  /// no way to end a session: a stolen token stayed valid for three months and
+  /// the only lever was rotating `AUTH_SECRET`, which would have signed out
+  /// every user on the website as well. The claim is checked on each request,
+  /// so signing out everywhere is one increment.
+  tokenVersion Int @default(0)
+
   accounts       Account[]
   playlistTracks PlaylistTrack[]
   sessions Session[]
@@ -254,4 +263,24 @@ model PlaylistTrack {
 
   @@unique([userId, playlistId, trackUri])
   @@index([userId, sourceMbid])
+}
+
+/// One row per rate-limited key, e.g. `login:1.2.3.4`.
+///
+/// In the database rather than in memory because the API runs on serverless
+/// functions: an in-process counter is per-instance and per-cold-start, so it
+/// resets constantly and several instances each let the full quota through.
+/// That is not a rate limit, it is the appearance of one.
+///
+/// Only the endpoints where abuse is cheap and damaging use this — signing in,
+/// signing up, deleting an account. Catalogue reads take the in-memory limiter
+/// instead, because a database round trip on every search would cost more than
+/// the abuse it prevents.
+model RateLimit {
+  key     String   @id
+  hits    Int      @default(1)
+  /// When the current window ends. Rows past this are free to be reused or swept.
+  resetAt DateTime
+
+  @@index([resetAt])
 }

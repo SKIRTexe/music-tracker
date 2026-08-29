@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { getAlbum, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
@@ -14,6 +15,15 @@ export const GET = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) => {
+  // These are open proxies onto Spotify's quota — no sign-in required, because
+  // browsing the catalogue without an account is the point. The in-memory
+  // limiter is per-instance and therefore leaky, which is the right trade here:
+  // a database round trip on every search would cost more than the abuse it
+  // prevents, and this app has exhausted its connection pool before. It exists
+  // to stop one client hammering the quota, not to be exact.
+  const gate = memoryLimit(clientKey(req, "album"), 120, 60_000);
+  if (!gate.ok) return tooMany(gate.retryAfter);
+
   const { id } = await params;
 
   let album;

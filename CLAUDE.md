@@ -856,3 +856,37 @@ chosen server-side — otherwise a client could ask for 365 daily buckets and dr
 
 ## Features To Build
 - [ ] Reviews UI (schema is already there)
+
+## Accounts, tokens and abuse
+
+**Mobile tokens are stateless but revocable.** They carry a `ver` claim matched
+against `User.tokenVersion` on every request. Bump the column to end one user's
+sessions; rotating `AUTH_SECRET` would end *everyone's*, on the website too. A
+token with no `ver` claim is treated as version 0, so tokens minted before the
+column existed keep working instead of logging the userbase out on deploy.
+
+**Two rate limiters, and the choice between them is about cost, not strictness.**
+`rateLimit` is backed by the `RateLimit` table and is used where one request is
+expensive or dangerous — login, register, Apple sign-in, account deletion. It
+has to be in the database: the API is serverless, so an in-process counter is
+per-instance and dies on every cold start, which is the appearance of a limit
+rather than one. `memoryLimit` is per-instance and leaky on purpose, and guards
+the catalogue routes, where a database round trip per search would cost more
+than the abuse it prevents. Both fail open — a limiter that takes the API down
+when Postgres hiccups is a worse outage than the abuse.
+
+**Sign in with Apple verifies three things or none.** The identity token travels
+through the client, so the signature, the issuer *and* the audience all have to
+be checked: a token minted for a different app is a perfectly valid Apple token.
+If neither `APPLE_BUNDLE_ID` nor `APPLE_SERVICES_ID` is set, verification
+*refuses* rather than skipping the audience check.
+
+Accounts are matched on Apple's `sub`, never on email — the email may be a relay
+address and may be absent. `fullName` arrives only on the first authorisation and
+never again, so it is captured at sign-in or lost.
+
+**Deleting an account is one row.** Every user relation is `onDelete: Cascade`,
+so there is no list here to fall out of date. Apple's grant is revoked first,
+while the refresh token is still readable — Apple requires it, and it is best
+effort, because failing to reach Apple must not stop someone deleting their data.
+`MbCache` and `ArtistMeta` survive: facts about records, not about people.
