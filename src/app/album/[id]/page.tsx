@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
 import { AlbumActions } from "@/components/AlbumActions";
+import { communityRating, COMMUNITY_MIN_RATINGS } from "@/lib/social";
 import { TrackRow } from "@/components/TrackRow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -40,6 +41,8 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
   }
 
   const session = await auth();
+  const community = await communityRating(id);
+
   const [userEntry, trackEntries, savedSongs] = await Promise.all([
     session?.user?.id
       ? prisma.albumLog.findUnique({
@@ -95,6 +98,23 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
               </span>
             )}
           </p>
+
+          {/* What everyone else made of it, shown next to the facts rather than
+              beside the user's own score — it is context for deciding whether to
+              listen, not a benchmark to rate against. Absent below
+              COMMUNITY_MIN_RATINGS, because an average of one or two is that
+              person's rating with their name taken off. */}
+          {community && (
+            <div className="mb-4 inline-flex items-baseline gap-2 rounded-full bg-zinc-900 px-3 py-1.5 ring-1 ring-inset ring-white/10">
+              <span className="text-sm font-semibold tabular-nums text-brand-500">
+                {community.average.toFixed(1)}
+              </span>
+              <span className="text-[11px] text-zinc-500">
+                community average from {community.count}{" "}
+                {community.count === 1 ? "rating" : "ratings"}
+              </span>
+            </div>
+          )}
 
           {album.genres.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-4">

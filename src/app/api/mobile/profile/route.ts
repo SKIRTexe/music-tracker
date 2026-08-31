@@ -1,0 +1,86 @@
+import { NextResponse } from "next/server";
+import { authed } from "@/lib/mobile-auth";
+import { prisma } from "@/lib/prisma";
+import {
+  profileByHandle, canViewLibrary, friendState,
+  validateHandle, normaliseHandle,
+} from "@/lib/social";
+
+/**
+ * A profile: your own, or someone else's by `?handle=`.
+ *
+ * Ratings come back only when `canViewLibrary` allows it — the same single gate
+ * the website uses, rather than a second copy of the rule that could disagree
+ * with it.
+ */
+export const GET = authed(async (req, userId) => {
+  const handle = new URL(req.url).searchParams.get("handle");
+
+  if (!handle) {
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, handle: true, name: true, bio: true, image: true, isPublic: true },
+    });
+    return NextResponse.json({ profile: me, isSelf: true, state: "self", rated: [] });
+  }
+
+  const profile = await profileByHandle(handle);
+  if (!profile) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const [visible, state] = await Promise.all([
+    canViewLibrary(userId, profile.id),
+    friendState(userId, profile.id),
+  ]);
+
+  const rated = visible
+    ? await prisma.albumLog.findMany({
+        where: { userId: profile.id, rating: { not: null } },
+        orderBy: [{ rating: "desc" }, { updatedAt: "desc" }],
+        take: 60,
+        select: {
+          mbid: true, itemType: true, albumTitle: true,
+          artistName: true, coverUrl: true, rating: true,
+        },
+      })
+    : [];
+
+  return NextResponse.json({ profile, isSelf: state === "self", state, visible, rated });
+});
+
+/** Update your own profile. The handle is the only field that can be refused. */
+export const PATCH = authed(async (req, userId) => {
+  let body: { handle?: string; name?: string; bio?: string; image?: string; isPublic?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  const data: Record<string, unknown> = {};
+
+  if (body.handle !== undefined) {
+    const handle = normaliseHandle(body.handle);
+    const problem = await validateHandle(handle, userId);
+    if (problem) return NextResponse.json({ error: problem }, { status: 422 });
+    data.handle = handle;
+  }
+  if (body.name !== undefined) data.name = body.name.trim() || null;
+  if (body.bio !== undefined) data.bio = body.bio.trim() || null;
+  if (body.image !== undefined) {
+    const image = body.image.trim();
+    // https only. A `javascript:` or `data:` URL rendered on someone else's
+    // profile is a stored XSS vector.
+    if (image && !/^https:\/\//i.test(image)) {
+      return NextResponse.json({ error: "bad_image" }, { status: 422 });
+    }
+    data.image = image || null;
+  }
+  if (body.isPublic !== undefined) data.isPublic = !!body.isPublic;
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: { id: true, handle: true, name: true, bio: true, image: true, isPublic: true },
+  });
+  return NextResponse.json({ profile: updated });
+});

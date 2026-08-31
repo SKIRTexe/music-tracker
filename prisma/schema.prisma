@@ -44,6 +44,28 @@ model User {
   /// instead of being invisible to every existing account.
   statsHidden String[]
 
+  /// The name people find you by: lowercase, unique, stable.
+  ///
+  /// Separate from `name`, which is display text and may be anything or nothing.
+  /// A handle is the thing typed into a search box, so it has to be unique and
+  /// unambiguous, and it is stored already-lowercased rather than compared
+  /// case-insensitively at every call site — `@unique` on a mixed-case column
+  /// would let `Shrey` and `shrey` both exist.
+  ///
+  /// Nullable because every existing account predates it. A user without one is
+  /// simply not findable yet.
+  handle String? @unique
+
+  /// Whether anyone can see this profile, or only accepted friends.
+  ///
+  /// Private by default. Someone's listening history is theirs, and a social
+  /// feature that makes it public the moment it ships would be publishing data
+  /// they gave us for a different reason.
+  isPublic Boolean @default(false)
+
+  friendshipsSent     Friendship[] @relation("friendshipRequester")
+  friendshipsReceived Friendship[] @relation("friendshipAddressee")
+
   /// Bumped to invalidate every mobile token this user holds.
   ///
   /// The app's tokens live 90 days and are stateless, so before this there was
@@ -290,4 +312,37 @@ model RateLimit {
   resetAt DateTime
 
   @@index([resetAt])
+}
+
+/// A friendship, or a request to become one.
+///
+/// One row per pair, not two. The direction is kept because it is meaningful
+/// while the request is pending — who asked whom — and becomes uninteresting
+/// once accepted, at which point either side reads the same row. The
+/// alternative, mirrored rows, has to keep two records in step and silently
+/// half-breaks when it fails to.
+///
+/// There is no DECLINED state. A declined request is deleted, so the asker sees
+/// no trace and can ask again later, and the person who declined does not carry
+/// a permanent record of having done so. A block list is a different feature
+/// with different needs, and is deliberately not this.
+model Friendship {
+  id          String   @id @default(cuid())
+  requesterId String
+  addresseeId String
+  /// PENDING | ACCEPTED
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  requester User @relation("friendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("friendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  /// Stops the same person asking twice. The reverse pair is checked in code,
+  /// since a constraint cannot express "and not the other way round".
+  @@unique([requesterId, addresseeId])
+  /// The two questions actually asked: who is waiting on me, and who are my
+  /// friends.
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
 }

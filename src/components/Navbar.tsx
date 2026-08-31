@@ -32,7 +32,10 @@ export async function Navbar() {
           {session?.user ? (
             <>
               <NavLink href="/library">Library</NavLink>
-              <NavLink href="/stats">Stats</NavLink>
+              {/* Stats moved behind Settings: it is something you look at now and
+                  then, not part of the daily loop, and the nav on a 360px phone
+                  has no room for a word that earns its place rarely. */}
+              <NavLink href="/friends">Friends</NavLink>
               {/* An icon rather than a fifth word: the nav is already at the
                   width a 360px phone can hold. */}
               <NavLink href="/settings" aria-label="Settings" title="Settings">

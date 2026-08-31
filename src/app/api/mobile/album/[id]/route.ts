@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { communityRating } from "@/lib/social";
 import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { getAlbum, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
@@ -62,5 +63,9 @@ export const GET = async (
     if (hit) existing[track.id] = hit;
   }
 
-  return NextResponse.json({ ...album, existing, popularity });
+  // Cheap: one indexed aggregate over AlbumLog, and null below the disclosure
+  // floor rather than a number built from one or two people.
+  const community = await communityRating(id);
+
+  return NextResponse.json({ ...album, existing, popularity, community });
 };

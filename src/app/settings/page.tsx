@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { RankingToggle } from "@/components/RankingToggle";
 import { StatsModulesForm } from "@/components/StatsModulesForm";
 import { DeleteAccount } from "@/components/DeleteAccount";
+import { ProfileForm } from "@/components/ProfileForm";
 import { RANKING_MIN_RATED } from "@/lib/ranking";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,10 @@ export default async function SettingsPage() {
   const [user, ratedAlbums, savedItems] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { rankingEnabled: true, statsHidden: true },
+      select: {
+        rankingEnabled: true, statsHidden: true,
+        handle: true, name: true, bio: true, image: true, isPublic: true,
+      },
     }),
     prisma.albumLog.count({
       where: { userId: session.user.id, itemType: "ALBUM", rating: { not: null } },
@@ -40,6 +44,23 @@ export default async function SettingsPage() {
       </header>
 
       <section>
+        <div className="mb-3">
+          <h2 className="text-[10px] uppercase tracking-widest text-zinc-500">Profile</h2>
+          <p className="mt-1 text-[11px] leading-snug text-zinc-600">
+            Your handle is how friends find you. Nothing here is public unless you
+            switch the profile to public below.
+          </p>
+        </div>
+        <ProfileForm
+          handle={user?.handle ?? ""}
+          name={user?.name ?? ""}
+          bio={user?.bio ?? ""}
+          image={user?.image ?? ""}
+          isPublic={user?.isPublic ?? false}
+        />
+      </section>
+
+      <section>
         <h2 className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">Rating</h2>
         <RankingToggle
           enabled={!!user?.rankingEnabled}
@@ -49,10 +70,18 @@ export default async function SettingsPage() {
       </section>
 
       <section>
-        <div className="mb-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-[10px] uppercase tracking-widest text-zinc-500">
             Stats page
           </h2>
+          <Link
+            href="/stats"
+            className="rounded-full bg-zinc-900 px-3 py-1.5 text-[11px] font-medium text-brand-500 ring-1 ring-inset ring-white/10 transition-colors hover:ring-white/20"
+          >
+            Open stats →
+          </Link>
+        </div>
+        <div className="mb-3">
           <p className="mt-1 text-[11px] leading-snug text-zinc-600">
             Switch off anything you don&rsquo;t care about. Hiding a block only stops it
             being drawn — the data keeps being collected either way, so nothing is lost
