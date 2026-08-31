@@ -30,7 +30,14 @@ model User {
 
   /// Rate by comparing against what you've already rated, instead of picking a
   /// number. See `src/lib/ranking.ts`.
-  rankingEnabled Boolean @default(false)
+  ///
+  /// On by default. It is the better way to rate — a number picked in isolation
+  /// drifts, and comparisons produce an order the user actually agrees with —
+  /// but it was opt-in, which meant almost nobody saw it. Safe as a default
+  /// because it degrades: `active` is false until `RANKING_MIN_RATED` items
+  /// exist, so the first couple of ratings still use the slider and there is no
+  /// empty ladder to compare against.
+  rankingEnabled Boolean @default(true)
 
   /// Stats modules this user has switched off, by id. A *hidden* list rather than
   /// a visible one, so a module added later shows up for everyone by default
