@@ -56,6 +56,17 @@ model User {
   /// simply not findable yet.
   handle String? @unique
 
+  /// One or two letters shown in the avatar circle.
+  ///
+  /// Chosen rather than uploaded. An avatar upload needs blob storage, a size
+  /// limit, a moderation answer for what people put in it, and a takedown path
+  /// — all of which is a lot of surface for a circle 40 points wide. Two
+  /// letters tell people apart in a friends list, which is the entire job.
+  ///
+  /// Null means "derive them from the name or handle", so an account that never
+  /// sets this still looks like everyone else.
+  initials String?
+
   /// Whether anyone can see this profile, or only accepted friends.
   ///
   /// Private by default. Someone's listening history is theirs, and a social

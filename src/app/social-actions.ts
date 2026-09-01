@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   requestFriend, acceptFriend, removeFriend, findPeople,
-  validateHandle, normaliseHandle, type Person, type HandleError,
+  validateHandle, normaliseHandle, cleanInitials, type Person, type HandleError,
 } from "@/lib/social";
 
 async function viewer(): Promise<string | null> {
@@ -55,13 +55,13 @@ const HANDLE_MESSAGES: Record<HandleError, string> = {
  * Save the profile.
  *
  * The handle is the only field that can fail, because it is the only one anyone
- * else has to be able to rely on. An empty image or bio is a valid answer.
+ * else has to be able to rely on. Empty initials or bio are valid answers.
  */
 export async function saveProfile(input: {
   handle: string;
   name: string;
   bio: string;
-  image: string;
+  initials: string;
   isPublic: boolean;
 }): Promise<{ error?: string }> {
   const me = await viewer();
@@ -71,20 +71,13 @@ export async function saveProfile(input: {
   const problem = await validateHandle(handle, me);
   if (problem) return { error: HANDLE_MESSAGES[problem] };
 
-  const image = input.image.trim();
-  // Only http(s). A `javascript:` or `data:` URL in an attribute that ends up in
-  // an <img> on someone else's profile page is a stored XSS vector.
-  if (image && !/^https:\/\//i.test(image)) {
-    return { error: "Image links must start with https://" };
-  }
-
   await prisma.user.update({
     where: { id: me },
     data: {
       handle,
       name: input.name.trim() || null,
       bio: input.bio.trim() || null,
-      image: image || null,
+      initials: cleanInitials(input.initials) || null,
       isPublic: input.isPublic,
     },
   });

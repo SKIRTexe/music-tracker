@@ -9,15 +9,15 @@ const FIELD =
   "w-full rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-base text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500/60 focus:outline-none sm:text-sm";
 
 export function ProfileForm({
-  handle, name, bio, image, isPublic,
+  handle, name, bio, initials, isPublic,
 }: {
   handle: string;
   name: string;
   bio: string;
-  image: string;
+  initials: string;
   isPublic: boolean;
 }) {
-  const [form, setForm] = useState({ handle, name, bio, image, isPublic });
+  const [form, setForm] = useState({ handle, name, bio, initials, isPublic });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -41,22 +41,24 @@ export function ProfileForm({
       className="space-y-4"
     >
       <div className="flex items-center gap-3">
-        <Avatar name={form.name} handle={form.handle} image={form.image} size={56} />
+        <Avatar name={form.name} handle={form.handle} initials={form.initials} size={56} />
         <div className="min-w-0 flex-1">
           <label className="block text-[11px] text-zinc-500">
-            Picture link
+            Initials
             <input
-              value={form.image}
-              onChange={(e) => set("image", e.target.value)}
-              placeholder="https://…"
+              value={form.initials}
+              // Filtered as it is typed rather than rejected on save: the rule is
+              // two letters, and a field that silently refuses the third
+              // keystroke explains itself better than an error underneath.
+              onChange={(e) => set("initials", e.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 2))}
+              placeholder="Auto"
+              maxLength={2}
               autoComplete="off"
-              className={`mt-1 ${FIELD}`}
+              className={`mt-1 ${FIELD} w-20 text-center tracking-widest`}
             />
           </label>
-          {/* Said plainly rather than hidden behind a broken image: there is no
-              upload yet, and pretending otherwise wastes the user's time. */}
           <p className="mt-1 text-[10px] text-zinc-600">
-            Paste a link to an image. Uploading isn&rsquo;t supported yet.
+            Up to two letters. Leave blank to use your name.
           </p>
         </div>
       </div>

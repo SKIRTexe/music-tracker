@@ -1,46 +1,41 @@
+import { initialsFor } from "@/lib/social";
+
 /**
- * Someone's picture, or their initials.
+ * Someone's circle: one or two letters.
  *
- * Initials rather than a generic silhouette: in a list of friends the point is
- * telling people apart, and a column of identical grey heads does the opposite.
+ * There are no uploaded pictures, on purpose. An avatar upload needs blob
+ * storage, a size limit, a moderation answer for what people put in it and a
+ * takedown path — a lot of surface for a circle 40 points wide, when the job is
+ * only telling people apart in a list.
+ *
+ * The letters come from the profile if chosen, otherwise from the name or
+ * handle, so an account that never set any still looks like every other row.
  */
 export function Avatar({
   name,
   handle,
-  image,
+  initials,
   size = 40,
 }: {
   name?: string | null;
   handle?: string | null;
-  image?: string | null;
+  initials?: string | null;
   size?: number;
 }) {
-  const label = name || handle || "?";
-  const initials = label
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+  const letters = initialsFor({ initials, name, handle });
 
   return (
     <div
-      className="shrink-0 overflow-hidden rounded-full bg-zinc-800"
+      className="flex shrink-0 items-center justify-center rounded-full bg-brand-500/15 ring-1 ring-inset ring-brand-500/30"
       style={{ width: size, height: size }}
+      aria-hidden
     >
-      {image ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <span
-            className="font-semibold text-zinc-500"
-            style={{ fontSize: Math.max(10, size * 0.36) }}
-          >
-            {initials}
-          </span>
-        </div>
-      )}
+      <span
+        className="font-semibold leading-none tracking-wide text-brand-500"
+        style={{ fontSize: Math.max(10, size * 0.38) }}
+      >
+        {letters}
+      </span>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export default async function SettingsPage() {
       where: { id: session.user.id },
       select: {
         rankingEnabled: true, statsHidden: true,
-        handle: true, name: true, bio: true, image: true, isPublic: true,
+        handle: true, name: true, bio: true, initials: true, isPublic: true,
       },
     }),
     prisma.albumLog.count({
@@ -55,7 +55,7 @@ export default async function SettingsPage() {
           handle={user?.handle ?? ""}
           name={user?.name ?? ""}
           bio={user?.bio ?? ""}
-          image={user?.image ?? ""}
+          initials={user?.initials ?? ""}
           isPublic={user?.isPublic ?? false}
         />
       </section>

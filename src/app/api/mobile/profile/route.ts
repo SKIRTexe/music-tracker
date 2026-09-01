@@ -3,7 +3,7 @@ import { authed } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/prisma";
 import {
   profileByHandle, canViewLibrary, friendState,
-  validateHandle, normaliseHandle,
+  validateHandle, normaliseHandle, cleanInitials,
 } from "@/lib/social";
 
 /**
@@ -19,7 +19,7 @@ export const GET = authed(async (req, userId) => {
   if (!handle) {
     const me = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, handle: true, name: true, bio: true, image: true, isPublic: true },
+      select: { id: true, handle: true, name: true, bio: true, initials: true, isPublic: true },
     });
     return NextResponse.json({ profile: me, isSelf: true, state: "self", rated: [] });
   }
@@ -49,7 +49,7 @@ export const GET = authed(async (req, userId) => {
 
 /** Update your own profile. The handle is the only field that can be refused. */
 export const PATCH = authed(async (req, userId) => {
-  let body: { handle?: string; name?: string; bio?: string; image?: string; isPublic?: boolean };
+  let body: { handle?: string; name?: string; bio?: string; initials?: string; isPublic?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -66,21 +66,13 @@ export const PATCH = authed(async (req, userId) => {
   }
   if (body.name !== undefined) data.name = body.name.trim() || null;
   if (body.bio !== undefined) data.bio = body.bio.trim() || null;
-  if (body.image !== undefined) {
-    const image = body.image.trim();
-    // https only. A `javascript:` or `data:` URL rendered on someone else's
-    // profile is a stored XSS vector.
-    if (image && !/^https:\/\//i.test(image)) {
-      return NextResponse.json({ error: "bad_image" }, { status: 422 });
-    }
-    data.image = image || null;
-  }
+  if (body.initials !== undefined) data.initials = cleanInitials(body.initials) || null;
   if (body.isPublic !== undefined) data.isPublic = !!body.isPublic;
 
   const updated = await prisma.user.update({
     where: { id: userId },
     data,
-    select: { id: true, handle: true, name: true, bio: true, image: true, isPublic: true },
+    select: { id: true, handle: true, name: true, bio: true, initials: true, isPublic: true },
   });
   return NextResponse.json({ profile: updated });
 });

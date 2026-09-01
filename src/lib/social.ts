@@ -136,11 +136,39 @@ export interface Person {
   id: string;
   handle: string | null;
   name: string | null;
-  image: string | null;
+  initials: string | null;
   isPublic: boolean;
 }
 
-const PERSON = { id: true, handle: true, name: true, image: true, isPublic: true } as const;
+const PERSON = { id: true, handle: true, name: true, initials: true, isPublic: true } as const;
+
+/**
+ * The one or two letters to show for someone.
+ *
+ * Falls back to the name, then the handle, so an account that never chose any
+ * still looks like every other row rather than an empty circle.
+ */
+export function initialsFor(person: {
+  initials?: string | null;
+  name?: string | null;
+  handle?: string | null;
+}): string {
+  if (person.initials) return person.initials.toUpperCase().slice(0, 2);
+  const source = person.name || person.handle || "?";
+  return source
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+/** Letters only, at most two. */
+export function cleanInitials(raw: string): string {
+  return raw.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 2);
+}
 
 export async function friendsOf(userId: string): Promise<Person[]> {
   const rows = await prisma.friendship.findMany({
