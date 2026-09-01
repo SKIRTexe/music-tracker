@@ -15,7 +15,7 @@ export const GET = authed(async (_req, userId) => {
   const [account, user, wantCount] = await Promise.all([
     prisma.account.findFirst({
       where: { userId, provider: "spotify" },
-      select: { providerAccountId: true },
+      select: { providerAccountId: true, scope: true },
     }),
     prisma.user.findUnique({
       where: { id: userId },
@@ -27,6 +27,16 @@ export const GET = authed(async (_req, userId) => {
   return NextResponse.json({
     configured: spotifyConfigured(),
     linked: !!account,
+    /*
+     * Whether this connection may read listening history.
+     *
+     * A refresh token carries the scopes granted when it was issued, so a link
+     * made before `user-top-read` existed cannot read it and never will without
+     * re-consenting. Spotify answers with a bare 403, so the app needs to be
+     * told here — otherwise the only thing that fixes it, reconnecting, is the
+     * one thing the user has no reason to try.
+     */
+    canReadListening: !!account?.scope?.includes("user-top-read"),
     playlistId: user?.spotifyPlaylistId ?? null,
     playlistUrl: user?.spotifyPlaylistId
       ? `https://open.spotify.com/playlist/${user.spotifyPlaylistId}`
