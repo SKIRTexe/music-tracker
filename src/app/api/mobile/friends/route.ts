@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { authed } from "@/lib/mobile-auth";
-import { friendsOf, pendingRequests, requestFriend, acceptFriend, removeFriend } from "@/lib/social";
+import {
+  friendsOf, pendingRequests, requestFriend, acceptFriend, removeFriend, friendActivity,
+} from "@/lib/social";
 
-/** Your friends, and who is waiting on you. */
+/** Your friends, who is waiting on you, and what they have rated lately. */
 export const GET = authed(async (_req, userId) => {
-  const [friends, requests] = await Promise.all([
+  const [friends, requests, activity] = await Promise.all([
     friendsOf(userId),
     pendingRequests(userId),
+    friendActivity(userId),
   ]);
-  return NextResponse.json({ friends, requests });
+  return NextResponse.json({ friends, requests, activity });
 });
 
 /**

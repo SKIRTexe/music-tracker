@@ -170,12 +170,20 @@ export function cleanInitials(raw: string): string {
   return raw.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 2);
 }
 
+/**
+ * Your friends, most recently added first.
+ *
+ * `updatedAt` rather than `createdAt`, because the row is created when the
+ * request is *sent* and updated when it is accepted — and the moment a
+ * friendship began is the acceptance, which may be days later.
+ */
 export async function friendsOf(userId: string): Promise<Person[]> {
   const rows = await prisma.friendship.findMany({
     where: {
       status: "ACCEPTED",
       OR: [{ requesterId: userId }, { addresseeId: userId }],
     },
+    orderBy: { updatedAt: "desc" },
     select: {
       requester: { select: PERSON },
       addressee: { select: PERSON },
@@ -183,6 +191,65 @@ export async function friendsOf(userId: string): Promise<Person[]> {
   });
   // Whichever side of the row is not you.
   return rows.map((r) => (r.requester.id === userId ? r.addressee : r.requester));
+}
+
+/** Just the ids, for the queries that only need to scope by them. */
+async function friendIds(userId: string): Promise<string[]> {
+  const rows = await prisma.friendship.findMany({
+    where: { status: "ACCEPTED", OR: [{ requesterId: userId }, { addresseeId: userId }] },
+    select: { requesterId: true, addresseeId: true },
+  });
+  return rows.map((r) => (r.requesterId === userId ? r.addresseeId : r.requesterId));
+}
+
+export interface ActivityItem {
+  mbid: string;
+  itemType: string;
+  albumTitle: string;
+  artistName: string;
+  coverUrl: string | null;
+  rating: number;
+  at: Date;
+  person: Person;
+}
+
+/**
+ * What your friends have rated lately.
+ *
+ * No visibility check, and that is correct rather than an oversight: an
+ * accepted friendship *is* the permission, and `canViewLibrary` returns true
+ * for exactly this set. Re-deriving it per row would be a query per row to
+ * reach the same answer.
+ *
+ * Ordered by `updatedAt`, so a re-rated record surfaces again — changing your
+ * mind about an album is the interesting event, and treating it as old news
+ * because it was first saved months ago would hide the good part.
+ */
+export async function friendActivity(userId: string, limit = 24): Promise<ActivityItem[]> {
+  const ids = await friendIds(userId);
+  if (ids.length === 0) return [];
+
+  const rows = await prisma.albumLog.findMany({
+    where: { userId: { in: ids }, rating: { not: null } },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    select: {
+      mbid: true, itemType: true, albumTitle: true, artistName: true,
+      coverUrl: true, rating: true, updatedAt: true,
+      user: { select: PERSON },
+    },
+  });
+
+  return rows.map((r) => ({
+    mbid: r.mbid,
+    itemType: r.itemType,
+    albumTitle: r.albumTitle,
+    artistName: r.artistName,
+    coverUrl: r.coverUrl,
+    rating: r.rating!,
+    at: r.updatedAt,
+    person: r.user,
+  }));
 }
 
 /** Requests waiting on you. The ones you sent are not listed: there is nothing
