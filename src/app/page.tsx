@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getExistingEntries, getSavedSongs, songKey, type ExistingEntry } from "@/lib/library";
 import { getDiscover } from "@/lib/discover";
+import { albumsFromListening, hasListeningScope } from "@/lib/spotify-listening";
+import { getSession as spotifySession } from "@/lib/spotify";
 import { ResultCard } from "@/components/ResultCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { LibraryItemCard } from "@/components/LibraryItemCard";
@@ -170,7 +172,7 @@ export default async function HomePage({
 
   // ── Landing ────────────────────────────────────────────────────────────────
   const userId = session?.user?.id;
-  const [recent, discover] = await Promise.all([
+  const [recent, discover, listening, spotifyLinked, listeningAllowed] = await Promise.all([
     userId
       ? prisma.albumLog.findMany({
           where: { userId },
@@ -184,6 +186,11 @@ export default async function HomePage({
         })
       : [],
     getDiscover(userId),
+    // Every one of these is bounded and independent, so they resolve together
+    // rather than stacking their latencies on the landing page.
+    userId ? albumsFromListening(userId) : Promise.resolve([]),
+    userId ? spotifySession(userId).then((s) => !!s) : Promise.resolve(false),
+    userId ? hasListeningScope(userId) : Promise.resolve(false),
   ]);
 
   return (
@@ -221,6 +228,48 @@ export default async function HomePage({
               <LibraryItemCard key={entry.id} entry={entry} />
             ))}
           </div>
+        </section>
+      )}
+
+      {listening.length > 0 && (
+        <section className={BAND}>
+          <div className="mb-4 flex items-baseline justify-between gap-3">
+            <SectionHeading>From your listening</SectionHeading>
+            <p className="truncate text-[10px] text-zinc-600">
+              Played a lot on Spotify, not rated here yet
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:gap-5 md:grid-cols-6">
+            {listening.map((item) => (
+              <ResultCard
+                key={item.id}
+                item={item}
+                isLoggedIn={isLoggedIn}
+                existing={null}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* A refresh token carries the scopes it was granted, so an account linked
+          before this feature existed cannot read listening history and never
+          will without re-consenting. Saying so beats an empty space where a row
+          should be. */}
+      {spotifyLinked && !listeningAllowed && (
+        <section className={BAND}>
+          <SectionHeading>From your listening</SectionHeading>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Reconnect Spotify to see albums you have played a lot but never rated.
+            The connection was made before this existed, so it doesn&rsquo;t have
+            permission to read your listening yet.{" "}
+            <Link
+              href="/settings"
+              className="text-brand-500 underline underline-offset-2"
+            >
+              Reconnect in Settings
+            </Link>
+          </p>
         </section>
       )}
 

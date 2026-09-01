@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { getDiscover } from "@/lib/discover";
+import { albumsFromListening } from "@/lib/spotify-listening";
 import { getExistingEntries } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
 import { catalogConfigured } from "@/lib/catalog";
@@ -33,11 +34,26 @@ export const GET = async (req: Request) => {
   }
 
   const userId = (await userIdFromRequest(req)) ?? undefined;
-  const discover = await getDiscover(userId);
+
+  // Albums the user has actually played but never rated. Empty for anyone who
+  // has not linked Spotify, or whose link predates the `user-top-read` scope —
+  // the app shows the row only when there is something in it, so no signed-out
+  // or unlinked user sees an explanation they did not ask for.
+  const [discover, listening] = await Promise.all([
+    getDiscover(userId),
+    userId ? albumsFromListening(userId) : Promise.resolve([]),
+  ]);
 
   // Already-saved albums are filtered out by `getDiscover`, but an album can be
   // saved from this very row and the app should show that without a refetch.
-  const existing = await getExistingEntries(userId, discover.albums.map((a) => a.id));
+  const existing = await getExistingEntries(
+    userId,
+    [...discover.albums, ...listening].map((a) => a.id)
+  );
 
-  return NextResponse.json({ ...discover, existing: Object.fromEntries(existing) });
+  return NextResponse.json({
+    ...discover,
+    listening,
+    existing: Object.fromEntries(existing),
+  });
 };

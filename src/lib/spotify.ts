@@ -11,6 +11,17 @@ export const SPOTIFY_SCOPES = [
   "playlist-modify-private",
   "playlist-modify-public",
   "playlist-read-private",
+  /*
+   * Reads which artists and tracks this person actually plays, so the app can
+   * suggest records they have already heard but never rated.
+   *
+   * Added after the first connections were made, which matters: a refresh token
+   * carries the scopes granted when it was issued, so an account linked before
+   * this cannot use it and no amount of retrying will change that. The listening
+   * code checks the stored `scope` and asks the user to reconnect rather than
+   * failing with a 403 they cannot interpret.
+   */
+  "user-top-read",
 ].join(" ");
 
 export function spotifyConfigured(): boolean {
@@ -148,7 +159,7 @@ export async function unlinkAccount(userId: string): Promise<void> {
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 
-async function api<T>(
+export async function api<T>(
   session: SpotifySession,
   path: string,
   init: RequestInit = {}
