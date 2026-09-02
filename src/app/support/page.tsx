@@ -49,6 +49,29 @@ export default function SupportPage() {
       </section>
 
       <section className="space-y-2">
+        <h2 className="text-sm font-medium text-zinc-200">Using the beta</h2>
+        <div className="space-y-3 text-xs leading-relaxed text-zinc-400">
+          <p>
+            The iOS app is in TestFlight. Signing in with{" "}
+            <strong className="text-zinc-300">Continue with Apple</strong> is the
+            easiest way to start — it creates the account and there is no password
+            to lose.
+          </p>
+          <p>
+            <strong className="text-zinc-300">Connecting Spotify is limited
+            during the beta.</strong> Spotify caps how many people can authorise a
+            developing app, so playlist sync and listening suggestions may refuse
+            to connect. Everything else — searching, saving, rating, friends —
+            works regardless.
+          </p>
+          <p>
+            Reporting something broken is genuinely useful. Say what you tapped
+            and what happened instead; a screenshot beats a description.
+          </p>
+        </div>
+      </section>
+
+      <section className="space-y-2">
         <h2 className="text-sm font-medium text-zinc-200">Common questions</h2>
         <div className="space-y-3 text-xs leading-relaxed text-zinc-400">
           <p>
