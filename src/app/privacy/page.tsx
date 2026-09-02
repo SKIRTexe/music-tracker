@@ -15,7 +15,7 @@ export const metadata = { title: "Privacy — Recordcrate" };
  * listed are the hosts the server actually contacts.
  */
 
-const UPDATED = "29 August 2026";
+const UPDATED = "1 September 2026";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -50,6 +50,17 @@ export default function PrivacyPage() {
           real one.
         </p>
         <p>
+          <strong className="text-zinc-300">Your profile.</strong> If you choose a
+          handle, a display name, initials or a bio, those are stored so friends can
+          find you. A handle is visible to anyone who searches for it. Nothing else
+          about you is visible to other people unless you switch your profile to
+          public, or accept a friend request.
+        </p>
+        <p>
+          <strong className="text-zinc-300">Friends.</strong> Who you are friends
+          with, and pending requests. Deleting a friendship deletes the record of it.
+        </p>
+        <p>
           <strong className="text-zinc-300">What you save.</strong> The albums and songs
           you add, whether you have listened to them or want to, your ratings, and the
           time each was added or changed. This is the content of the service.
@@ -77,8 +88,11 @@ export default function PrivacyPage() {
         </p>
         <p>
           If you connect Spotify yourself, the app can create and update a playlist in
-          your Spotify account. That connection is optional, is only made when you ask
-          for it, and can be removed at any time from Settings.
+          your Spotify account, and — if you grant it — read which tracks you listen to
+          most, so it can suggest records you have played but never rated. Your Spotify
+          account id is stored to keep that connection working. It is optional, is only
+          made when you ask for it, and can be removed at any time from Settings or from
+          Profile in the app.
         </p>
         <p>
           If you sign in with Apple, <strong className="text-zinc-300">Apple</strong>{" "}
