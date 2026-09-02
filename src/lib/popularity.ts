@@ -54,7 +54,7 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 const DEADLINE_MS = 2_500;
 
-export const NO_POPULARITY: AlbumPopularity = { fans: null, tracks: {} };
+export const NO_POPULARITY: AlbumPopularity = { fans: null, tracks: {}, previews: {} };
 
 /**
  * Resolve `work`, or give up and return `fallback`.
@@ -75,6 +75,20 @@ export interface AlbumPopularity {
   fans: number | null;
   /** Track rank keyed by normalised title. Only meaningful within one album. */
   tracks: Record<string, number>;
+  /**
+   * Thirty-second preview audio, keyed by normalised title.
+   *
+   * Deezer's, because Spotify no longer offers it: `preview_url` comes back
+   * null for apps registered after they withdrew it, which was verified against
+   * this app's own credentials rather than assumed. Deezer serves an MP3 with
+   * no key and no auth, from the same album response the ranks come from — so
+   * this costs nothing beyond a slightly larger cached body.
+   *
+   * The clips are what a preview endpoint is for, but they are Deezer's to
+   * serve and could stop at any time. Everything treats a missing preview as
+   * ordinary.
+   */
+  previews: Record<string, string>;
 }
 
 /** Lowercase, strip punctuation — the same shape as `songKey`, and for the same
@@ -131,7 +145,7 @@ async function cachedGet<T>(path: string): Promise<T | null> {
 
 interface DeezerSearch<T> { data?: T[] }
 interface DeezerAlbum { id: number; title: string; fans?: number; nb_tracks?: number; record_type?: string }
-interface DeezerTrack { title: string; rank?: number }
+interface DeezerTrack { title: string; rank?: number; preview?: string }
 interface DeezerArtist { id: number; name: string; nb_fan?: number }
 
 /**
@@ -187,7 +201,7 @@ export async function albumPopularity(
   title: string,
   expectedTracks?: number
 ): Promise<AlbumPopularity> {
-  const empty: AlbumPopularity = { fans: null, tracks: {} };
+  const empty: AlbumPopularity = { fans: null, tracks: {}, previews: {} };
 
   const album = await findAlbum(artist, title, expectedTracks);
   if (!album) return empty;
@@ -196,11 +210,18 @@ export async function albumPopularity(
   const tracks = await cachedGet<DeezerSearch<DeezerTrack>>(`/album/${album.id}/tracks?limit=100`);
 
   const ranks: Record<string, number> = {};
+  const previews: Record<string, string> = {};
   for (const track of tracks?.data ?? []) {
-    if (typeof track.rank === "number" && track.title) ranks[key(track.title)] = track.rank;
+    if (!track.title) continue;
+    if (typeof track.rank === "number") ranks[key(track.title)] = track.rank;
+    // Only https. These end up in an audio player, and an http URL would be
+    // blocked by App Transport Security anyway.
+    if (typeof track.preview === "string" && track.preview.startsWith("https://")) {
+      previews[key(track.title)] = track.preview;
+    }
   }
 
-  return { fans: detail?.fans ?? album.fans ?? null, tracks: ranks };
+  return { fans: detail?.fans ?? album.fans ?? null, tracks: ranks, previews };
 }
 
 /**
