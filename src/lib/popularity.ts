@@ -102,14 +102,32 @@ const key = popularityKey;
  * its name — it was built for MusicBrainz, but nothing about it is specific to
  * it, and a second identical table would be worse than a slightly narrow name.
  */
+/**
+ * Some responses must never be cached.
+ *
+ * Deezer's preview URLs are signed and expire: a clip fetched now returns a
+ * 479 KB MP3, and the same URL out of a day-old cache returns 403. Storing them
+ * for a week produced a tracklist where every play button was silently dead —
+ * which looked like a bug in the player, not in the cache.
+ *
+ * So the tracklist is always fetched live. It costs about 250ms and one request
+ * to an unmetered endpoint, which is the price of the buttons working.
+ */
+function cacheable(path: string): boolean {
+  return !path.includes("/tracks");
+}
+
 async function cachedGet<T>(path: string): Promise<T | null> {
   const url = `${API}${path}`;
+  const useCache = cacheable(path);
 
-  try {
-    const hit = await prisma.mbCache.findUnique({ where: { url } });
-    if (hit && hit.expiresAt > new Date()) return JSON.parse(hit.body) as T;
-  } catch {
-    // A cache read failing is not a reason to skip the lookup.
+  if (useCache) {
+    try {
+      const hit = await prisma.mbCache.findUnique({ where: { url } });
+      if (hit && hit.expiresAt > new Date()) return JSON.parse(hit.body) as T;
+    } catch {
+      // A cache read failing is not a reason to skip the lookup.
+    }
   }
 
   let body: string;
@@ -129,15 +147,17 @@ async function cachedGet<T>(path: string): Promise<T | null> {
   // Deezer answers 200 with an `error` object rather than an HTTP status.
   if (parsed && typeof parsed === "object" && "error" in parsed && parsed.error) return null;
 
-  try {
-    const expiresAt = new Date(Date.now() + TTL_MS);
-    await prisma.mbCache.upsert({
-      where: { url },
-      create: { url, body, expiresAt },
-      update: { body, expiresAt },
-    });
-  } catch {
-    // Losing the cache write only costs a repeat lookup.
+  if (useCache) {
+    try {
+      const expiresAt = new Date(Date.now() + TTL_MS);
+      await prisma.mbCache.upsert({
+        where: { url },
+        create: { url, body, expiresAt },
+        update: { body, expiresAt },
+      });
+    } catch {
+      // Losing the cache write only costs a repeat lookup.
+    }
   }
 
   return parsed as T;
