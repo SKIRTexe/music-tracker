@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { communityRatings } from "@/lib/social";
+import { groupsFor, groupMembership } from "@/lib/collections";
 import { prisma } from "@/lib/prisma";
 import { authed } from "@/lib/mobile-auth";
 import { parseLibraryItem, saveToLibraryFor } from "@/lib/library-write";
@@ -35,11 +36,13 @@ export const GET = authed(async (_req, userId) => {
 
   // Public averages for the whole library in one groupBy, so a grid of a
   // hundred tiles is still a single query.
-  const community = Object.fromEntries(
-    await communityRatings(entries.map((e) => e.mbid))
-  );
+  const [community, groups, membership] = await Promise.all([
+    communityRatings(entries.map((e) => e.mbid)).then(Object.fromEntries),
+    groupsFor(userId),
+    groupMembership(userId, entries.map((e) => e.mbid)),
+  ]);
 
-  return NextResponse.json({ entries, community });
+  return NextResponse.json({ entries, community, groups, membership });
 });
 
 /** Add an item, or move one already saved to a different status. */

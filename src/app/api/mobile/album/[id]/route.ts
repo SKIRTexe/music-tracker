@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { communityRating } from "@/lib/social";
 import { reviewsForAlbum } from "@/lib/reviews";
+import { favouritesFor } from "@/lib/collections";
 import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { getAlbum, CatalogNotFound } from "@/lib/catalog";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
@@ -68,10 +69,13 @@ export const GET = async (
   // floor rather than a number built from one or two people.
   // Both are indexed lookups keyed on the album, so they run together rather
   // than adding their latencies to a page that already waited on the catalogue.
-  const [community, reviews] = await Promise.all([
+  const [community, reviews, favourites] = await Promise.all([
     communityRating(id),
     reviewsForAlbum(id, userId ?? null),
+    userId ? favouritesFor(userId, id) : Promise.resolve([]),
   ]);
 
-  return NextResponse.json({ ...album, existing, popularity, community, reviews });
+  return NextResponse.json({
+    ...album, existing, popularity, community, reviews, favourites,
+  });
 };

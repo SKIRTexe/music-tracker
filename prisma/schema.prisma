@@ -74,6 +74,8 @@ model User {
   /// they gave us for a different reason.
   isPublic Boolean @default(false)
 
+  favouriteTracks FavouriteTrack[]
+  albumGroups     AlbumGroup[]
   reviewReactions ReviewReaction[]
   reviewReplies   ReviewReply[]
 
@@ -443,4 +445,68 @@ model Friendship {
   /// friends.
   @@index([addresseeId, status])
   @@index([requesterId, status])
+}
+
+/// A track someone marked as a favourite on one album.
+///
+/// Keyed by album id plus track *title*, not a track id: the same studio song
+/// carries a different id on every release it appears on, which is the rule the
+/// whole library already follows for songs. Titles are unique within a release
+/// in every case that matters here.
+///
+/// Capped at five per album, enforced in code rather than by a constraint —
+/// Postgres cannot express "at most five rows per group" without a trigger, and
+/// the cap is a product decision that belongs where it can be explained.
+model FavouriteTrack {
+  id     String @id @default(cuid())
+  userId String
+  /// The album the track is on.
+  mbid   String
+  title  String
+  /// Order they were picked in, so a review can list them the way the user
+  /// built the list rather than alphabetically.
+  position Int
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mbid, title])
+  @@index([userId, mbid])
+}
+
+/// A user-made grouping of albums — "country", "on repeat", "1970s".
+///
+/// Deliberately not tags: a group has a name the user chose and an order, and
+/// the thing they asked for was "see my top country albums", which is a list
+/// they curate rather than a facet they filter by.
+model AlbumGroup {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items AlbumGroupItem[]
+
+  /// One group per name per person, so "Country" and "Country" cannot both exist
+  /// and leave them wondering which one an album went into.
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
+}
+
+model AlbumGroupItem {
+  groupId String
+  /// The album id. Not a foreign key to AlbumLog: an album can be grouped and
+  /// then removed from the library, and losing the grouping to that would be
+  /// surprising.
+  mbid    String
+  addedAt DateTime @default(now())
+
+  group AlbumGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, mbid])
+  @@index([mbid])
 }
