@@ -21,8 +21,6 @@
  * anyone's listening history, and asking for less is the difference between a
  * token that can manage playlists and one that can read a person's habits.
  */
-export {};
-
 const SCOPES = [
   "playlist-modify-private",
   "playlist-modify-public",
@@ -54,6 +52,7 @@ if (!code) {
   console.log("Then re-run with the ?code= value from the redirect:\n");
   console.log("  npx tsx scripts/spotify-app-auth.ts <code>\n");
 } else {
+  void (async () => {
   const res = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
     headers: {
@@ -90,4 +89,5 @@ if (!code) {
   console.log("Granted scopes   :", body.scope ?? "(none reported)");
   console.log("\nSet this, and nothing else needs doing again:\n");
   console.log(`SPOTIFY_APP_REFRESH_TOKEN=${body.refresh_token}\n`);
+  })();
 }
