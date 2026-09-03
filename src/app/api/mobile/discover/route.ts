@@ -3,6 +3,7 @@ import { communityRatings } from "@/lib/social";
 import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { getDiscover } from "@/lib/discover";
 import { albumsFromListening } from "@/lib/spotify-listening";
+import { popularReviews } from "@/lib/reviews";
 import { getExistingEntries } from "@/lib/library";
 import { userIdFromRequest } from "@/lib/mobile-auth";
 import { catalogConfigured } from "@/lib/catalog";
@@ -40,9 +41,12 @@ export const GET = async (req: Request) => {
   // has not linked Spotify, or whose link predates the `user-top-read` scope —
   // the app shows the row only when there is something in it, so no signed-out
   // or unlinked user sees an explanation they did not ask for.
-  const [discover, listening] = await Promise.all([
+  const [discover, listening, reviews] = await Promise.all([
     getDiscover(userId),
     userId ? albumsFromListening(userId) : Promise.resolve([]),
+    // Shown to signed-out visitors too: a landing page that looks empty until
+    // you have friends is a landing page that looks broken.
+    popularReviews(userId ?? null, 5),
   ]);
 
   // Already-saved albums are filtered out by `getDiscover`, but an album can be
@@ -61,6 +65,7 @@ export const GET = async (req: Request) => {
   return NextResponse.json({
     ...discover,
     listening,
+    reviews,
     existing: Object.fromEntries(existing),
     community,
   });

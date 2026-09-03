@@ -18,11 +18,20 @@ export const GET = authed(async (req, userId) => {
   const handle = new URL(req.url).searchParams.get("handle");
 
   if (!handle) {
-    const me = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, handle: true, name: true, bio: true, initials: true, isPublic: true },
+    // Your own reviews come back here too, which is what the library's Reviews
+    // tab reads. Everything you wrote, whatever its audience — a private review
+    // is private from other people, not from you.
+    const [me, mine] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, handle: true, name: true, bio: true, initials: true, isPublic: true },
+      }),
+      reviewsForUser(userId, userId),
+    ]);
+    return NextResponse.json({
+      profile: me, isSelf: true, state: "self",
+      rated: [], wantToListen: [], reviews: mine,
     });
-    return NextResponse.json({ profile: me, isSelf: true, state: "self", rated: [] });
   }
 
   const profile = await profileByHandle(handle);

@@ -548,3 +548,30 @@ export async function reviewsForUser(
 
   return toViews(rows as Row[], viewerId, new Set(isFriend ? [authorId] : []));
 }
+
+/**
+ * Public reviews worth reading, for people who are not looking at one album.
+ *
+ * Separate from `reviewsFeed` because that one needs a viewer to have friends
+ * before it says anything, and this runs on the search landing where a signed
+ * out visitor should still see that the place has writing in it.
+ *
+ * Requires at least one like for the same reason the feed does: without it this
+ * is a recency list wearing the word "popular".
+ */
+export async function popularReviews(
+  viewerId: string | null,
+  limit = 5
+): Promise<ReviewView[]> {
+  const rows = await prisma.review.findMany({
+    where: {
+      visibility: "PUBLIC",
+      likes: { gt: 0 },
+      ...(viewerId ? { userId: { not: viewerId } } : {}),
+    },
+    orderBy: [{ likes: "desc" }, { updatedAt: "desc" }],
+    take: limit,
+    select: ROW,
+  });
+  return toViews(rows as Row[], viewerId);
+}
