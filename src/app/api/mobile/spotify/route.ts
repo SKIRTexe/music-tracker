@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authed } from "@/lib/mobile-auth";
-import { spotifyConfigured } from "@/lib/spotify";
+import { spotifyConfigured, appAccountConfigured } from "@/lib/spotify";
 import { exportWantToListenFor, disconnectSpotifyFor } from "@/lib/spotify-export";
 
 /**
@@ -27,6 +27,17 @@ export const GET = authed(async (_req, userId) => {
   return NextResponse.json({
     configured: spotifyConfigured(),
     linked: !!account,
+    /*
+     * Whether syncing works *without* connecting an account, because the
+     * playlist can live on ours instead. This is what lets the app offer Sync
+     * to everyone rather than only to the 25 people Spotify's development mode
+     * allows to authorise us.
+     *
+     * The playlist is then ours and they follow it, so it is a one-way mirror —
+     * which the app says, rather than implying they can edit it.
+     */
+    canSyncWithoutLink: appAccountConfigured(),
+    playlistIsOurs: appAccountConfigured() && !account,
     /*
      * Whether this connection may read listening history.
      *

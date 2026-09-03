@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import {
   getSession,
+  appSession,
+  appAccountConfigured,
   unlinkAccount,
   ensurePlaylist,
   playlistTrackUris,
@@ -36,18 +38,42 @@ export type ExportReport = {
 export async function exportWantToListenFor(userId: string): Promise<ExportReport> {
   const empty = { matched: [], missing: [], added: 0, removed: 0, alreadyPresent: 0 };
 
-  const spotify = await getSession(userId);
-  if (!spotify) return { ok: false, message: "Connect Spotify first.", ...empty };
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { spotifyPlaylistId: true, handle: true, name: true },
+  });
+
+  /*
+   * Their account if they connected one, ours otherwise.
+   *
+   * Their own is preferred where it exists: they own that playlist, so they can
+   * edit it, and the two-way sync that respects their manual removals keeps
+   * working. On our account the playlist is ours — they follow it rather than
+   * own it — so it becomes a one-way mirror. That is a real difference, and the
+   * reason a personal link is not simply removed.
+   *
+   * But it is no longer *required*, which is the point: Spotify caps a
+   * development-mode app at 25 authorised users, and the export was the one
+   * feature that ceiling made unusable for everyone else.
+   */
+  const own = await getSession(userId);
+  const spotify = own ?? (await appSession());
+  const onAppAccount = !own;
+
+  if (!spotify) {
+    return {
+      ok: false,
+      message: appAccountConfigured()
+        ? "Spotify is temporarily unavailable. Try again in a moment."
+        : "Connect Spotify first.",
+      ...empty,
+    };
+  }
 
   const wanted = await prisma.albumLog.findMany({
     where: { userId, status: "WANT" },
     orderBy: { addedAt: "asc" },
     select: { mbid: true, albumTitle: true, artistName: true, itemType: true },
-  });
-
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { spotifyPlaylistId: true },
   });
 
   // With nothing wanted there may still be tracks to clear out, so this only bails
@@ -58,7 +84,18 @@ export async function exportWantToListenFor(userId: string): Promise<ExportRepor
   }
 
   try {
-    const playlist = await ensurePlaylist(spotify, user?.spotifyPlaylistId ?? null);
+    // Named per person when it lives on our account, because one account holds
+    // everyone's and "Want to Listen" fifty times over is unmanageable — for us
+    // reading it, and for anyone who ends up with two of them followed.
+    const label = user?.handle ? `@${user.handle}` : (user?.name || "you");
+    const playlist = await ensurePlaylist(
+      spotify,
+      user?.spotifyPlaylistId ?? null,
+      onAppAccount ? `Recordcrate \u2014 Want to Listen \u2014 ${label}` : undefined,
+      onAppAccount
+        ? "Kept in step with a Recordcrate queue. Follow it to see updates."
+        : undefined
+    );
     if (playlist.created) {
       await prisma.user.update({
         where: { id: userId },

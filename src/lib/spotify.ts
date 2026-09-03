@@ -153,6 +153,68 @@ export async function getSession(userId: string): Promise<SpotifySession | null>
   return { accessToken: refreshed.access_token, spotifyUserId: account.providerAccountId };
 }
 
+// ── The app's own Spotify account ────────────────────────────────────────────
+
+/**
+ * A session for the account *this app* owns, rather than a user's.
+ *
+ * Why this exists: Spotify caps a development-mode app at 25 users who may
+ * authorise it, which is a hard ceiling on a feature that requires each person
+ * to connect their own account. But the playlist does not actually need to live
+ * on *their* account — it needs to be a playlist they can open and follow.
+ *
+ * So one account, ours, holds a playlist per user, and each person gets a link.
+ * That takes the export from "25 users, ever" to unlimited, and the experience
+ * is nearly identical: a followed playlist updates in place, so their Spotify
+ * shows the same live list it would have either way.
+ *
+ * The playlists are created `public: false`, which on Spotify means *unlisted*
+ * rather than inaccessible — verified: the web link answers 200 to a signed-out
+ * browser, while the playlist stays off the owning account's profile and out of
+ * search. That is exactly the property this needs, and it is the reason the
+ * design is acceptable at all: nobody's queue ends up browsable from our
+ * account's profile page.
+ *
+ * Unset means the feature is simply off. It is not an error, and nothing should
+ * treat it as one — the same way mail is off without a Resend key.
+ */
+export function appAccountConfigured(): boolean {
+  return !!(spotifyConfigured() && process.env.SPOTIFY_APP_REFRESH_TOKEN);
+}
+
+/**
+ * Cached in module scope because a serverless instance handles many requests and
+ * an access token lasts an hour. Not in the database: it is derived, cheap to
+ * re-mint, and a row would need locking to avoid two instances racing on it.
+ */
+let appToken: { value: string; expires: number } | null = null;
+
+export async function appSession(): Promise<SpotifySession | null> {
+  if (!appAccountConfigured()) return null;
+
+  if (appToken && appToken.expires > Date.now() + 60_000) {
+    return { accessToken: appToken.value, spotifyUserId: "app" };
+  }
+
+  try {
+    const refreshed = await tokenRequest(
+      new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: process.env.SPOTIFY_APP_REFRESH_TOKEN!,
+      })
+    );
+    appToken = {
+      value: refreshed.access_token,
+      expires: Date.now() + refreshed.expires_in * 1000,
+    };
+    return { accessToken: appToken.value, spotifyUserId: "app" };
+  } catch (err) {
+    // A revoked app token must not take the whole library page down with it.
+    console.error("spotify app session:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export async function unlinkAccount(userId: string): Promise<void> {
   await prisma.account.deleteMany({ where: { userId, provider: "spotify" } });
 }
@@ -232,7 +294,9 @@ const PLAYLIST_NAME = "Recordcrate — Want to Listen";
 /** The saved playlist if it still exists, otherwise a newly created one. */
 export async function ensurePlaylist(
   session: SpotifySession,
-  existingId: string | null
+  existingId: string | null,
+  name: string = PLAYLIST_NAME,
+  description = "Albums and songs I want to listen to, exported from Recordcrate."
 ): Promise<{ id: string; url: string; created: boolean }> {
   if (existingId) {
     try {
@@ -256,9 +320,11 @@ export async function ensurePlaylist(
     {
       method: "POST",
       body: JSON.stringify({
-        name: PLAYLIST_NAME,
+        name,
+        // Unlisted, not inaccessible. The link works for anyone who has it; the
+        // playlist stays off the owning account's profile and out of search.
         public: false,
-        description: "Albums and songs I want to listen to, exported from Recordcrate.",
+        description,
       }),
     }
   );

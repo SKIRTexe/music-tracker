@@ -5,6 +5,7 @@ import {
   addTracks,
   removeTracks,
   urisForItem,
+  appSession,
 } from "@/lib/spotify";
 
 /**
@@ -38,7 +39,10 @@ export async function syncItemAdded(
   itemType: string
 ): Promise<void> {
   try {
-    const spotify = await getSession(userId);
+    // Same fallback as the manual sync: their account if they linked one, ours
+  // otherwise. Without this the background sync would silently do nothing for
+  // everyone using an app-owned playlist.
+  const spotify = (await getSession(userId)) ?? (await appSession());
     if (!spotify) return; // Spotify not connected — nothing to keep in step.
 
     const user = await prisma.user.findUnique({
@@ -88,7 +92,10 @@ export async function syncItemRemoved(userId: string, mbid: string): Promise<voi
     const rows = await prisma.playlistTrack.findMany({ where: { userId, sourceMbid: mbid } });
     if (rows.length === 0) return;
 
-    const spotify = await getSession(userId);
+    // Same fallback as the manual sync: their account if they linked one, ours
+  // otherwise. Without this the background sync would silently do nothing for
+  // everyone using an app-owned playlist.
+  const spotify = (await getSession(userId)) ?? (await appSession());
     if (!spotify) return;
 
     // Group by playlist in case the id changed at some point.
