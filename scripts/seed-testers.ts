@@ -28,10 +28,42 @@ const PEOPLE = [
   { handle: "yuki_m", name: "Yuki Mori", initials: "YM", isPublic: true },
 ];
 
-/** Not a friend. Their public reviews are what the popular section is made of. */
+/**
+ * Not friends. Their public reviews are what the popular section is made of,
+ * and there are ten because the featured album needs ten distinct public
+ * authors — the unique constraint is one review per person per album, so ten
+ * reviews cannot come from fewer than ten people.
+ */
 const STRANGERS = [
   { handle: "halvard", name: "Halvard Nyström", initials: "HN", isPublic: true },
   { handle: "rosacm", name: "Rosa Camara", initials: "RC", isPublic: true },
+  { handle: "tobiasw", name: "Tobias Wren", initials: null, isPublic: true },
+  { handle: "amaraok", name: "Amara Okonkwo", initials: "AO", isPublic: true },
+  { handle: "juneb", name: "June Baptiste", initials: null, isPublic: true },
+  { handle: "kasperl", name: "Kasper Lund", initials: "KL", isPublic: true },
+  { handle: "priyav", name: "Priya Venkat", initials: null, isPublic: true },
+  { handle: "emreoz", name: "Emre Özkan", initials: "EÖ", isPublic: true },
+  { handle: "noorh", name: "Noor Hassan", initials: null, isPublic: true },
+  { handle: "gusreid", name: "Gus Reid", initials: "GR", isPublic: true },
+];
+
+/** Longer, more distinct, so fifteen on one page do not read as filler. */
+const FEATURED_REVIEWS = [
+  "I put this on expecting nostalgia and got something colder and better than I remembered.",
+  "The sequencing is the whole trick. Shuffle it once and you'll see what I mean.",
+  "Technically astonishing, emotionally a bit of a locked room. I admire it more than I love it.",
+  "My dad's copy, then mine. Hard to hear it without hearing a kitchen in 1994 underneath.",
+  "Everyone quotes the big track and skips the two that actually hold it together.",
+  "Genuinely think the back half is stronger, which appears to be a minority position.",
+  "Sounds enormous on a real system and thin on earbuds. Worth finding a room for.",
+  "It's fine. I've never understood the reverence and I've given it a decade of chances.",
+  "The kind of record that made me go and read about how records get made.",
+  "Every year I decide I'm bored of it and every year it wins me back by track three.",
+  "Overplayed to the point of invisibility, which is not the album's fault.",
+  "First time I heard this I was too young for it. It got better as I got worse.",
+  "There's a warmth in the mix here that nobody has convincingly copied since.",
+  "Great album, exhausting fanbase, and I say that as one of them.",
+  "Put it on at 2am and it stops being a classic and starts being a record again.",
 ];
 
 const REVIEWS = [
@@ -149,6 +181,52 @@ async function clean() {
     }
   }
 
+  // One album carrying a full page: ten public reviews and five friends-only,
+  // so the album window, the sort orders and the full screen all have a
+  // realistic amount to work with rather than two or three rows.
+  const featured = albums[0];
+  const publicAuthors = [...strangers, ...friends].slice(0, 10);
+  const friendAuthors = friends.slice(0, 5);
+  let featuredCount = 0;
+
+  for (const [i, person] of publicAuthors.entries()) {
+    await prisma.albumLog.upsert({
+      where: { userId_mbid: { userId: person.id, mbid: featured.mbid } },
+      create: {
+        userId: person.id, mbid: featured.mbid, albumTitle: featured.albumTitle,
+        artistName: featured.artistName, coverUrl: featured.coverUrl,
+        itemType: "ALBUM", status: "LISTENED", rating: 7 + (i % 4) * 0.7,
+      },
+      update: {},
+    });
+    await saveReview({
+      userId: person.id, mbid: featured.mbid,
+      body: FEATURED_REVIEWS[i], visibility: "PUBLIC",
+    });
+    featuredCount += 1;
+  }
+
+  // The friends-only five are written by friends who did *not* take a public
+  // slot, so the album really does hold fifteen distinct reviews.
+  const remainingFriends = friends.filter((f) => !publicAuthors.some((p) => p.id === f.id));
+  const friendsOnly = (remainingFriends.length >= 5 ? remainingFriends : friendAuthors).slice(0, 5);
+  for (const [i, person] of friendsOnly.entries()) {
+    await prisma.albumLog.upsert({
+      where: { userId_mbid: { userId: person.id, mbid: featured.mbid } },
+      create: {
+        userId: person.id, mbid: featured.mbid, albumTitle: featured.albumTitle,
+        artistName: featured.artistName, coverUrl: featured.coverUrl,
+        itemType: "ALBUM", status: "LISTENED", rating: 8 + (i % 3) * 0.5,
+      },
+      update: {},
+    });
+    await saveReview({
+      userId: person.id, mbid: featured.mbid,
+      body: FEATURED_REVIEWS[10 + i], visibility: "FRIENDS",
+    });
+    featuredCount += 1;
+  }
+
   // Likes and replies, so the popular list is genuinely sorted by something and
   // the reply UI has threads to open.
   const written = await prisma.review.findMany({
@@ -183,6 +261,8 @@ async function clean() {
   console.log(`seeded for @${target.handle ?? email}`);
   console.log(`  ${friends.length} friends, ${strangers.length} strangers`);
   console.log(`  ${everyone.length * albums.length} ratings across ${albums.length} albums`);
-  console.log(`  ${wrote} reviews, ${liked} likes, ${disliked} dislikes`);
+  console.log(`  ${wrote + featuredCount} reviews, ${liked} likes, ${disliked} dislikes`);
+  console.log(`  featured: ${featured.albumTitle} (${featured.mbid})`);
+  console.log(`            10 public + 5 friends-only, all distinct`);
   await prisma.$disconnect();
 })();
