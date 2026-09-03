@@ -42,6 +42,9 @@ export interface ReviewView {
   replyCount: number;
   /** 1, -1, or 0 for the viewer's own reaction. */
   myReaction: number;
+  /** Whether the author is a friend of the viewer, so the client can group
+   *  without needing the friend list itself. */
+  isFriend: boolean;
   /** Album context, for feeds where the review is shown away from its record. */
   mbid: string;
   albumTitle: string | null;
@@ -141,7 +144,14 @@ type Row = {
   albumLog: { rating: number | null; albumTitle: string; artistName: string; coverUrl: string | null } | null;
 };
 
-async function toViews(rows: Row[], viewerId: string | null): Promise<ReviewView[]> {
+async function toViews(
+  rows: Row[],
+  viewerId: string | null,
+  friendIds?: Set<string>
+): Promise<ReviewView[]> {
+  const friends = friendIds ?? new Set(
+    viewerId ? (await friendsOf(viewerId)).map((f) => f.id) : []
+  );
   const mine = new Map<string, number>();
   if (viewerId && rows.length) {
     const reactions = await prisma.reviewReaction.findMany({
@@ -163,6 +173,7 @@ async function toViews(rows: Row[], viewerId: string | null): Promise<ReviewView
     dislikes: r.dislikes,
     replyCount: r.replyCount,
     myReaction: mine.get(r.id) ?? 0,
+    isFriend: friends.has(r.userId),
     mbid: r.mbid,
     albumTitle: r.albumLog?.albumTitle ?? null,
     artistName: r.albumLog?.artistName ?? null,
@@ -180,10 +191,69 @@ async function toViews(rows: Row[], viewerId: string | null): Promise<ReviewView
  * Ordered with yours first, then by likes: on an album page the useful order is
  * "mine, then whatever people found worth reading", not strict recency.
  */
+export const SORTS = ["popular", "new", "controversial", "friends"] as const;
+export type ReviewSort = (typeof SORTS)[number];
+
+export function isReviewSort(value: string): value is ReviewSort {
+  return (SORTS as readonly string[]).includes(value);
+}
+
+/**
+ * Order a page of reviews.
+ *
+ * Done here rather than in SQL because *controversial* cannot be expressed as
+ * an index: it is a shape, not a column. Fetching a page and ordering it is
+ * fine at any size a single album's reviews will ever reach.
+ *
+ * **Controversial means divided, not disliked.** A review with fifty dislikes
+ * and no likes is unpopular; one with twenty of each is an argument. So the
+ * score is total reactions weighted by how close the split is, and anything
+ * with only one side of the argument scores zero — otherwise the list is just
+ * "most disliked", which is a different and much meaner feature.
+ *
+ * Your own review always leads, on every sort. On a page you came to read or
+ * edit, hunting for it under a sort order is not a service.
+ */
+export function sortReviews(views: ReviewView[], sort: ReviewSort): ReviewView[] {
+  const controversy = (r: ReviewView) => {
+    const total = r.likes + r.dislikes;
+    if (r.likes === 0 || r.dislikes === 0) return 0;
+    const balance = Math.min(r.likes, r.dislikes) / Math.max(r.likes, r.dislikes);
+    return total * balance;
+  };
+
+  const ordered = [...views];
+  switch (sort) {
+    case "new":
+      ordered.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      break;
+    case "controversial":
+      ordered.sort((a, b) => controversy(b) - controversy(a));
+      break;
+    case "friends":
+      // Friends first, then their own order by recency. Not a filter: a page
+      // that empties out because nobody you know has written about a record is
+      // a page that looks broken.
+      ordered.sort((a, b) => {
+        if (a.isFriend !== b.isFriend) return Number(b.isFriend) - Number(a.isFriend);
+        return b.updatedAt.getTime() - a.updatedAt.getTime();
+      });
+      break;
+    case "popular":
+    default:
+      ordered.sort((a, b) => {
+        const score = b.likes - b.dislikes - (a.likes - a.dislikes);
+        return score !== 0 ? score : b.updatedAt.getTime() - a.updatedAt.getTime();
+      });
+  }
+  return ordered.sort((a, b) => Number(b.isMine) - Number(a.isMine));
+}
+
 export async function reviewsForAlbum(
   mbid: string,
   viewerId: string | null,
-  limit = 50
+  limit = 50,
+  sort: ReviewSort = "popular"
 ): Promise<ReviewView[]> {
   const friendIds = viewerId ? (await friendsOf(viewerId)).map((f) => f.id) : [];
 
@@ -196,13 +266,15 @@ export async function reviewsForAlbum(
         ...(friendIds.length ? [{ visibility: "FRIENDS", userId: { in: friendIds } }] : []),
       ],
     },
+    // Ordered again in memory by `sortReviews`; this only bounds which rows
+    // come back when an album has more than a page of them.
     orderBy: [{ likes: "desc" }, { updatedAt: "desc" }],
     take: limit,
     select: ROW,
   });
 
-  const views = await toViews(rows as Row[], viewerId);
-  return views.sort((a, b) => Number(b.isMine) - Number(a.isMine));
+  const views = await toViews(rows as Row[], viewerId, new Set(friendIds));
+  return sortReviews(views, sort);
 }
 
 /**
