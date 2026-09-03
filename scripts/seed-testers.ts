@@ -130,12 +130,15 @@ async function clean() {
 
   // Reviews: friends write a mix of friends-only and public; strangers write
   // public ones, which is what the popular section can draw on.
+  //
+  // Everyone reviews the top two albums, so those pages have enough to fill a
+  // three-popular-plus-three-friends window and to sort meaningfully.
   let wrote = 0;
   for (const [index, person] of everyone.entries()) {
     const isStranger = index >= friends.length;
-    for (let n = 0; n < (isStranger ? 3 : 2); n++) {
-      const album = albums[(index + n * 3) % albums.length];
-      const visibility = isStranger ? "PUBLIC" : n === 0 ? "PUBLIC" : "FRIENDS";
+    for (let n = 0; n < (isStranger ? 4 : 3); n++) {
+      const album = n < 2 ? albums[n] : albums[(index + n) % albums.length];
+      const visibility = isStranger ? "PUBLIC" : n === 1 ? "FRIENDS" : "PUBLIC";
       await saveReview({
         userId: person.id,
         mbid: album.mbid,
@@ -153,12 +156,23 @@ async function clean() {
     select: { id: true, userId: true },
   });
   let liked = 0;
+  let disliked = 0;
   for (const [i, review] of written.entries()) {
+    const audience = everyone.filter((p) => p.id !== review.userId);
     // Vary how many people liked each, so "popular" has a real order.
-    const likers = everyone.filter((p) => p.id !== review.userId).slice(0, (i * 3) % 5);
+    const likers = audience.slice(0, (i * 3) % 5);
     for (const liker of likers) {
       await react({ reviewId: review.id, userId: liker.id, value: 1 });
       liked += 1;
+    }
+    // And give roughly every third review an argument on it. Without dislikes
+    // the controversial sort has nothing to rank and looks identical to
+    // popular — which is exactly how it read the first time this ran.
+    if (i % 3 === 1) {
+      for (const hater of audience.slice(likers.length, likers.length + 2 + (i % 2))) {
+        await react({ reviewId: review.id, userId: hater.id, value: -1 });
+        disliked += 1;
+      }
     }
     if (i % 3 === 0) {
       const replier = everyone.find((p) => p.id !== review.userId)!;
@@ -169,6 +183,6 @@ async function clean() {
   console.log(`seeded for @${target.handle ?? email}`);
   console.log(`  ${friends.length} friends, ${strangers.length} strangers`);
   console.log(`  ${everyone.length * albums.length} ratings across ${albums.length} albums`);
-  console.log(`  ${wrote} reviews, ${liked} likes`);
+  console.log(`  ${wrote} reviews, ${liked} likes, ${disliked} dislikes`);
   await prisma.$disconnect();
 })();
