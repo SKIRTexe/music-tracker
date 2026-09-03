@@ -84,16 +84,24 @@ export async function exportWantToListenFor(userId: string): Promise<ExportRepor
   }
 
   try {
-    // Named per person when it lives on our account, because one account holds
-    // everyone's and "Want to Listen" fifty times over is unmanageable — for us
-    // reading it, and for anyone who ends up with two of them followed.
-    const label = user?.handle ? `@${user.handle}` : (user?.name || "you");
+    /*
+     * Deliberately *not* named after the person, even though one account holds
+     * many of these.
+     *
+     * Spotify ignores `public: false` — it returns `public: true` regardless,
+     * and `PUT { public: false }` answers 200 without changing it. Verified.
+     * So these playlists cannot be relied on to stay out of search, and a name
+     * carrying "@handle" would tie a queue to a person if one were ever
+     * indexed. We do not need the name to tell them apart — the id is on the
+     * user row — only the person opening their own link needs it to read
+     * sensibly.
+     */
     const playlist = await ensurePlaylist(
       spotify,
       user?.spotifyPlaylistId ?? null,
-      onAppAccount ? `Recordcrate \u2014 Want to Listen \u2014 ${label}` : undefined,
+      undefined,
       onAppAccount
-        ? "Kept in step with a Recordcrate queue. Follow it to see updates."
+        ? "A Recordcrate queue. Follow it and it stays in step on its own."
         : undefined
     );
     if (playlist.created) {
