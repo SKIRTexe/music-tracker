@@ -263,16 +263,43 @@ model ArtistMeta {
 }
 
 /// Written reviews. No UI yet — see ARCHIVE.md section 10.
+/// What someone wrote about a record.
+///
+/// One per person per library entry, enforced by the unique constraint rather
+/// than by whichever caller happens to check first — two reviews of the same
+/// album by the same person is not a state the product has an answer for.
 model Review {
   id         String   @id @default(cuid())
   userId     String
   albumLogId String
   body       String   @db.Text
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+
+  /// PUBLIC | FRIENDS | PRIVATE
+  ///
+  /// Private by default, like everything else here. Someone writing about a
+  /// record for the first time has not yet decided who it is for, and the
+  /// answer that cannot be taken back is the wrong default.
+  ///
+  /// This is authoritative for the review itself, independent of the author's
+  /// profile setting: marking a review public is a deliberate act of
+  /// publishing *this*, and a private profile does not undo it. The reverse
+  /// also holds — a public profile does not publish a private review.
+  visibility String @default("PRIVATE")
+
+  /// Denormalised from the AlbumLog so an album page can find every review of a
+  /// record without joining through one row per user. It is the query this
+  /// table exists to serve.
+  mbid String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   albumLog AlbumLog @relation(fields: [albumLogId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, albumLogId])
+  @@index([mbid, visibility])
+  @@index([userId, updatedAt])
 }
 
 /// MusicBrainz responses, cached across serverless instances.
