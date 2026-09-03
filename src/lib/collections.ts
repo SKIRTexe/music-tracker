@@ -85,6 +85,8 @@ export async function toggleFavourite(params: {
 export interface GroupView {
   id: string;
   name: string;
+  /// Hex, or null for a group with no colour.
+  color: string | null;
   count: number;
   /// Whether the album being asked about is in this group. Only meaningful when
   /// a specific album was named, which is what the add-to-group sheet needs.
@@ -101,12 +103,21 @@ export const MAX_GROUP_NAME = 40;
  * request per group would make a five-group list five round trips.
  */
 export async function groupsFor(userId: string, mbid?: string): Promise<GroupView[]> {
+  /*
+   * Alphabetical, and deliberately not "most recently used".
+   *
+   * Recency reorders the list *while you are using it* — ticking a group moved
+   * it to the top and everything else shuffled under your finger, so the next
+   * tick landed on the wrong row. A constant order is worth more here than a
+   * clever one.
+   */
   const rows = await prisma.albumGroup.findMany({
     where: { userId },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { name: "asc" },
     select: {
       id: true,
       name: true,
+      color: true,
       _count: { select: { items: true } },
       items: mbid ? { where: { mbid }, select: { mbid: true } } : false,
     },
@@ -115,6 +126,7 @@ export async function groupsFor(userId: string, mbid?: string): Promise<GroupVie
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    color: row.color,
     count: row._count.items,
     ...(mbid ? { contains: (row.items ?? []).length > 0 } : {}),
   }));
@@ -124,7 +136,11 @@ export type GroupOutcome =
   | { group: GroupView }
   | { error: "empty" | "too_long" | "exists" };
 
-export async function createGroup(userId: string, name: string): Promise<GroupOutcome> {
+export async function createGroup(
+  userId: string,
+  name: string,
+  color?: string | null
+): Promise<GroupOutcome> {
   const clean = name.trim().replace(/\s+/g, " ");
   if (!clean) return { error: "empty" };
   if (clean.length > MAX_GROUP_NAME) return { error: "too_long" };
@@ -139,19 +155,44 @@ export async function createGroup(userId: string, name: string): Promise<GroupOu
   if (existing) return { error: "exists" };
 
   const group = await prisma.albumGroup.create({
-    data: { userId, name: clean },
-    select: { id: true, name: true },
+    data: { userId, name: clean, color: cleanColor(color) },
+    select: { id: true, name: true, color: true },
   });
   return { group: { ...group, count: 0, contains: false } };
 }
 
-export async function renameGroup(userId: string, groupId: string, name: string): Promise<boolean> {
-  const clean = name.trim().replace(/\s+/g, " ");
-  if (!clean || clean.length > MAX_GROUP_NAME) return false;
-  const done = await prisma.albumGroup.updateMany({
-    where: { id: groupId, userId },
-    data: { name: clean },
-  });
+/**
+ * Only `#rrggbb`, lowercased.
+ *
+ * The value is stored and later handed to a client to render, so anything not
+ * matching is dropped rather than passed through — a colour field is a small
+ * place to accept arbitrary strings.
+ */
+function cleanColor(value?: string | null): string | null {
+  if (!value) return null;
+  const hex = value.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(hex) ? hex : null;
+}
+
+export async function updateGroup(
+  userId: string,
+  groupId: string,
+  changes: { name?: string; color?: string | null }
+): Promise<boolean> {
+  const data: { name?: string; color?: string | null } = {};
+
+  if (changes.name !== undefined) {
+    const clean = changes.name.trim().replace(/\s+/g, " ");
+    if (!clean || clean.length > MAX_GROUP_NAME) return false;
+    data.name = clean;
+  }
+  // Distinguishes "leave it alone" from "clear it": undefined skips the field,
+  // null writes null.
+  if (changes.color !== undefined) data.color = cleanColor(changes.color);
+
+  if (Object.keys(data).length === 0) return false;
+
+  const done = await prisma.albumGroup.updateMany({ where: { id: groupId, userId }, data });
   return done.count > 0;
 }
 
@@ -188,11 +229,6 @@ export async function setGroupMembership(params: {
     });
   }
 
-  // Touch the group so "most recently used" ordering is useful in the sheet.
-  await prisma.albumGroup.update({
-    where: { id: params.groupId },
-    data: { updatedAt: new Date() },
-  });
   return true;
 }
 
@@ -204,6 +240,9 @@ export async function groupMembership(
   if (mbids.length === 0) return {};
   const rows = await prisma.albumGroupItem.findMany({
     where: { mbid: { in: mbids }, group: { userId } },
+    // Ordered by name so a cover's ring segments are in the same order every
+    // time it is drawn, rather than whatever the database felt like returning.
+    orderBy: { group: { name: "asc" } },
     select: { mbid: true, groupId: true },
   });
   const out: Record<string, string[]> = {};

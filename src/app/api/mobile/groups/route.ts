@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authed } from "@/lib/mobile-auth";
 import {
-  groupsFor, createGroup, deleteGroup, renameGroup,
+  groupsFor, createGroup, deleteGroup, updateGroup,
   setGroupMembership, MAX_GROUP_NAME,
 } from "@/lib/collections";
 
@@ -22,7 +22,10 @@ export const GET = authed(async (req, userId) => {
  * would mean the client deciding which it just did.
  */
 export const POST = authed(async (req, userId) => {
-  let body: { action?: string; name?: string; groupId?: string; mbid?: string; member?: boolean };
+  let body: {
+    action?: string; name?: string; groupId?: string;
+    mbid?: string; member?: boolean; color?: string | null;
+  };
   try {
     body = await req.json();
   } catch {
@@ -30,7 +33,7 @@ export const POST = authed(async (req, userId) => {
   }
 
   if (body.action === "create") {
-    const result = await createGroup(userId, body.name ?? "");
+    const result = await createGroup(userId, body.name ?? "", body.color);
     if ("error" in result) {
       return NextResponse.json(
         { error: result.error, maxLength: MAX_GROUP_NAME },
@@ -59,10 +62,16 @@ export const POST = authed(async (req, userId) => {
     return NextResponse.json({ groups: await groupsFor(userId, body.mbid) });
   }
 
-  if (body.action === "rename") {
+  // One action for name and colour: the edit sheet changes either, and two
+  // endpoints would mean the client deciding which field it just touched.
+  if (body.action === "update") {
     if (!body.groupId) return NextResponse.json({ error: "bad_request" }, { status: 400 });
-    const ok = await renameGroup(userId, body.groupId, body.name ?? "");
-    return NextResponse.json({ ok }, { status: ok ? 200 : 422 });
+    const ok = await updateGroup(userId, body.groupId, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.color !== undefined ? { color: body.color } : {}),
+    });
+    if (!ok) return NextResponse.json({ error: "invalid" }, { status: 422 });
+    return NextResponse.json({ groups: await groupsFor(userId, body.mbid ?? undefined) });
   }
 
   return NextResponse.json({ error: "bad_action" }, { status: 400 });

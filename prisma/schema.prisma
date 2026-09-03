@@ -485,6 +485,13 @@ model AlbumGroup {
   userId String
   name   String
 
+  /// A hex colour, chosen from a fixed palette in the app.
+  ///
+  /// Stored as the value rather than a palette index so the palette can grow or
+  /// be reordered without silently recolouring everyone's shelves. Null means
+  /// the group has no colour and draws no ring.
+  color String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
