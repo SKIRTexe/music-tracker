@@ -160,6 +160,25 @@ async function clean() {
     }
   }
 
+  // A queue each, so the "want to listen" page on a profile is not empty. Taken
+  // from the tail of the album list so it does not overlap what they rated.
+  for (const [index, person] of everyone.entries()) {
+    for (const album of albums.slice(-3)) {
+      const wanted = new Date(Date.now() - ((index * 5) % 60) * 3600_000);
+      await prisma.albumLog.upsert({
+        where: { userId_mbid: { userId: person.id, mbid: album.mbid } },
+        create: {
+          userId: person.id, mbid: album.mbid, albumTitle: album.albumTitle,
+          artistName: album.artistName, coverUrl: album.coverUrl,
+          itemType: "ALBUM", status: "WANT", rating: null,
+          addedAt: wanted, updatedAt: wanted, wantedAt: wanted,
+        },
+        // Never downgrade a rated album to a queue item.
+        update: {},
+      });
+    }
+  }
+
   // Reviews: friends write a mix of friends-only and public; strangers write
   // public ones, which is what the popular section can draw on.
   //
