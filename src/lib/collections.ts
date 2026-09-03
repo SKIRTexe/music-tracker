@@ -1,28 +1,28 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Favourite tracks, and user-made groups of albums.
+ * Favorite tracks, and user-made groups of albums.
  *
  * Both are private to their owner and neither is shared anywhere yet — the
- * favourites appear in your own reviews if you choose to include them, and a
+ * favorites appear in your own reviews if you choose to include them, and a
  * group is a shelf in your own library.
  */
 
 /**
  * Five, and the number is the feature.
  *
- * A favourites list without a cap is a second copy of the tracklist. Five is
+ * A favorites list without a cap is a second copy of the tracklist. Five is
  * few enough that picking the fifth means dropping one, which is what makes the
  * list say anything.
  */
-export const MAX_FAVOURITES = 5;
+export const MAX_FAVORITES = 5;
 
-export interface FavouriteTrackView {
+export interface FavoriteTrackView {
   title: string;
   position: number;
 }
 
-export async function favouritesFor(userId: string, mbid: string): Promise<FavouriteTrackView[]> {
+export async function favoritesFor(userId: string, mbid: string): Promise<FavoriteTrackView[]> {
   const rows = await prisma.favouriteTrack.findMany({
     where: { userId, mbid },
     orderBy: { position: "asc" },
@@ -31,23 +31,23 @@ export async function favouritesFor(userId: string, mbid: string): Promise<Favou
   return rows;
 }
 
-export type FavouriteOutcome =
-  | { favourites: FavouriteTrackView[] }
+export type FavoriteOutcome =
+  | { favorites: FavoriteTrackView[] }
   | { error: "full" };
 
 /**
- * Add or remove one track. Sending a title that is already a favourite removes
+ * Add or remove one track. Sending a title that is already a favorite removes
  * it, so the same tap is on and off.
  *
  * Positions are renumbered on every change rather than left sparse: they exist
  * to order a short list in a review, and a gap would show up there as nothing
  * at all while quietly making the next insert's position ambiguous.
  */
-export async function toggleFavourite(params: {
+export async function toggleFavorite(params: {
   userId: string;
   mbid: string;
   title: string;
-}): Promise<FavouriteOutcome> {
+}): Promise<FavoriteOutcome> {
   const { userId, mbid, title } = params;
 
   const existing = await prisma.favouriteTrack.findUnique({
@@ -59,7 +59,7 @@ export async function toggleFavourite(params: {
     await prisma.favouriteTrack.delete({ where: { id: existing.id } });
   } else {
     const count = await prisma.favouriteTrack.count({ where: { userId, mbid } });
-    if (count >= MAX_FAVOURITES) return { error: "full" };
+    if (count >= MAX_FAVORITES) return { error: "full" };
     await prisma.favouriteTrack.create({
       data: { userId, mbid, title, position: count },
     });
@@ -77,7 +77,7 @@ export async function toggleFavourite(params: {
     )
   );
 
-  return { favourites: after.map((row, index) => ({ title: row.title, position: index })) };
+  return { favorites: after.map((row, index) => ({ title: row.title, position: index })) };
 }
 
 // ── Groups ───────────────────────────────────────────────────────────────────
