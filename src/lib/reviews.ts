@@ -514,3 +514,37 @@ export async function repliesFor(
     isMine: r.userId === viewerId,
   }));
 }
+
+/**
+ * One person's reviews, as far as the viewer is allowed to read them.
+ *
+ * The same visibility rule as everywhere else, applied to an author rather than
+ * an album: their public ones always, their friends-only ones if you are one,
+ * and all of them if it is you.
+ */
+export async function reviewsForUser(
+  authorId: string,
+  viewerId: string | null,
+  limit = 60
+): Promise<ReviewView[]> {
+  const isSelf = authorId === viewerId;
+  const isFriend =
+    !isSelf && viewerId
+      ? (await friendsOf(viewerId)).some((f) => f.id === authorId)
+      : false;
+
+  const allowed: Visibility[] = isSelf
+    ? ["PUBLIC", "FRIENDS", "PRIVATE"]
+    : isFriend
+      ? ["PUBLIC", "FRIENDS"]
+      : ["PUBLIC"];
+
+  const rows = await prisma.review.findMany({
+    where: { userId: authorId, visibility: { in: allowed } },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    select: ROW,
+  });
+
+  return toViews(rows as Row[], viewerId, new Set(isFriend ? [authorId] : []));
+}

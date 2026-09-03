@@ -5,6 +5,7 @@ import {
   profileByHandle, canViewLibrary, friendState,
   validateHandle, normaliseHandle, cleanInitials,
 } from "@/lib/social";
+import { reviewsForUser } from "@/lib/reviews";
 
 /**
  * A profile: your own, or someone else's by `?handle=`.
@@ -32,19 +33,36 @@ export const GET = authed(async (req, userId) => {
     friendState(userId, profile.id),
   ]);
 
-  const rated = visible
-    ? await prisma.albumLog.findMany({
-        where: { userId: profile.id, rating: { not: null } },
-        orderBy: [{ rating: "desc" }, { updatedAt: "desc" }],
-        take: 60,
-        select: {
-          mbid: true, itemType: true, albumTitle: true,
-          artistName: true, coverUrl: true, rating: true,
-        },
-      })
-    : [];
+  const SHELF = {
+    mbid: true, itemType: true, albumTitle: true,
+    artistName: true, coverUrl: true, rating: true,
+  } as const;
 
-  return NextResponse.json({ profile, isSelf: state === "self", state, visible, rated });
+  // All three lists in one request: the profile is three swipeable pages, and
+  // fetching each as it is swiped to would make the second and third feel slower
+  // than the first for no reason.
+  const [rated, wantToListen, reviews] = visible
+    ? await Promise.all([
+        prisma.albumLog.findMany({
+          where: { userId: profile.id, rating: { not: null } },
+          orderBy: [{ rating: "desc" }, { updatedAt: "desc" }],
+          take: 60,
+          select: SHELF,
+        }),
+        prisma.albumLog.findMany({
+          where: { userId: profile.id, status: "WANT" },
+          orderBy: { addedAt: "desc" },
+          take: 60,
+          select: SHELF,
+        }),
+        reviewsForUser(profile.id, userId),
+      ])
+    : [[], [], []];
+
+  return NextResponse.json({
+    profile, isSelf: state === "self", state, visible,
+    rated, wantToListen, reviews,
+  });
 });
 
 /** Update your own profile. The handle is the only field that can be refused. */
