@@ -63,6 +63,10 @@ export interface CatalogTrack {
   number: string;
   title: string;
   length?: number;
+  /// Which disc, on releases that have more than one. Spotify always sends it,
+  /// so a single-disc album is simply every track on disc 1 — the *client*
+  /// decides whether that is worth showing.
+  disc?: number;
 }
 
 export interface AlbumDetail {
@@ -172,6 +176,7 @@ interface SpTrack {
   id: string;
   name: string;
   track_number?: number;
+  disc_number?: number;
   duration_ms?: number;
   artists: SpArtistRef[];
   album?: SpAlbum;
@@ -295,6 +300,7 @@ export async function getAlbum(id: string): Promise<AlbumDetail> {
   const tracks: CatalogTrack[] = (a.tracks?.items ?? []).map((t, i) => ({
     id: t.id,
     number: String(t.track_number ?? i + 1),
+    disc: t.disc_number ?? 1,
     title: t.name,
     length: t.duration_ms,
   }));
@@ -309,6 +315,7 @@ export async function getAlbum(id: string): Promise<AlbumDetail> {
       tracks.push({
         id: t.id,
         number: String(t.track_number ?? tracks.length + i + 1),
+        disc: t.disc_number ?? 1,
         title: t.name,
         length: t.duration_ms,
       });
