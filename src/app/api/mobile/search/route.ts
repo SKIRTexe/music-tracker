@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { communityRatings } from "@/lib/social";
 import { clientKey, memoryLimit, tooMany } from "@/lib/rate-limit";
 import { search, catalogConfigured } from "@/lib/catalog";
 import { getExistingEntries, getSavedSongs, songKey } from "@/lib/library";
@@ -61,5 +62,11 @@ export const GET = async (req: Request) => {
     if (saved) existing[song.id] = saved;
   }
 
-  return NextResponse.json({ ...results, existing });
+  // Public averages for everything on screen: one indexed groupBy for the page
+  // rather than a query per card.
+  const community = Object.fromEntries(
+    await communityRatings(results.albums.map((a) => a.id))
+  );
+
+  return NextResponse.json({ ...results, existing, community });
 };

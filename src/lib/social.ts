@@ -336,7 +336,19 @@ export async function profileByHandle(handle: string): Promise<(Person & { bio: 
  * that person's rating with their name removed but not much else. Hence the
  * floor: below it, there is no number.
  */
-export const COMMUNITY_MIN_RATINGS = 3;
+/**
+ * How many ratings before an average is shown.
+ *
+ * One, for now, because with a small userbase a floor of three meant almost no
+ * album ever showed a number and the feature was invisible.
+ *
+ * The trade is real and worth naming: an average of one *is* that person's
+ * rating with their name removed, and on an obscure record where only one
+ * friend has rated it, that is not much of a disguise. The count is always
+ * shown next to the number so nobody mistakes an average of one for a
+ * consensus. Raise this the moment there is enough data to afford it.
+ */
+export const COMMUNITY_MIN_RATINGS = 1;
 
 export interface CommunityRating {
   average: number;
