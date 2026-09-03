@@ -74,6 +74,9 @@ model User {
   /// they gave us for a different reason.
   isPublic Boolean @default(false)
 
+  reviewReactions ReviewReaction[]
+  reviewReplies   ReviewReply[]
+
   friendshipsSent     Friendship[] @relation("friendshipRequester")
   friendshipsReceived Friendship[] @relation("friendshipAddressee")
 
@@ -291,15 +294,72 @@ model Review {
   /// table exists to serve.
   mbid String
 
+  /// Reaction and reply totals, kept here rather than counted on read.
+  ///
+  /// Denormalised so "popular" is an index scan instead of an aggregate over
+  /// every reaction in the table. Every write goes through the same
+  /// transaction as the row it counts, so the two cannot disagree — and
+  /// `recountReview` exists to repair them if they ever do.
+  likes      Int @default(0)
+  dislikes   Int @default(0)
+  replyCount Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  albumLog AlbumLog @relation(fields: [albumLogId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  albumLog  AlbumLog         @relation(fields: [albumLogId], references: [id], onDelete: Cascade)
+  reactions ReviewReaction[]
+  replies   ReviewReply[]
 
   @@unique([userId, albumLogId])
   @@index([mbid, visibility])
   @@index([userId, updatedAt])
+  /// The popular feed: public reviews, best first.
+  @@index([visibility, likes])
+}
+
+/// One person's like or dislike of one review.
+///
+/// A single row per pair rather than two tables, so changing your mind is an
+/// update and cannot leave you holding both at once.
+model ReviewReaction {
+  id       String @id @default(cuid())
+  reviewId String
+  userId   String
+  /// 1 for a like, -1 for a dislike. No zero — removing a reaction deletes the
+  /// row, so "no opinion" is the absence of a record rather than a third value
+  /// every query has to remember to exclude.
+  value    Int
+
+  createdAt DateTime @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@index([userId])
+}
+
+/// A reply to a review.
+///
+/// Flat, not threaded. Replies to replies need moderation tools, collapsing
+/// rules and a notion of who a nested reply is addressed to — none of which
+/// exists here yet, and a half-built thread is worse than a conversation.
+model ReviewReply {
+  id       String @id @default(cuid())
+  reviewId String
+  userId   String
+  body     String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId, createdAt])
+  @@index([userId])
 }
 
 /// MusicBrainz responses, cached across serverless instances.
