@@ -71,6 +71,9 @@ export interface AlbumDetail {
   artistName: string;
   artistId?: string;
   year: string | null;
+  /// The full release date where Spotify gives one. `year` alone hides the month,
+  /// which is the interesting part on anything recent.
+  releaseDate: string | null;
   genres: string[];
   tracks: CatalogTrack[];
   coverArtUrl: string | null;
@@ -319,6 +322,7 @@ export async function getAlbum(id: string): Promise<AlbumDetail> {
     artistName: a.artists[0]?.name ?? "Unknown Artist",
     artistId: a.artists[0]?.id,
     year: a.release_date ? a.release_date.slice(0, 4) : null,
+    releaseDate: a.release_date ?? null,
     genres: a.genres ?? [],
     tracks,
     coverArtUrl: pickImage(a.images),
